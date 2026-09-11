@@ -74,7 +74,6 @@ async def global_exception_handler(request: Request, exc: Exception):
         else "An unexpected error occurred while processing the ETA calculation."
     )
 
-    # Devolvemos la misma estructura: un "message" principal y un diccionario de "errors"
     return JSONResponse(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         content={
