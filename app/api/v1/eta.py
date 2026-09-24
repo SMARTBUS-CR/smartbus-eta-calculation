@@ -1,5 +1,4 @@
 import uuid
-from datetime import datetime, timezone
 from fastapi import APIRouter, status, Request
 from app.schemas.eta_schema import (
     EtaAttributesResponse,
@@ -7,6 +6,7 @@ from app.schemas.eta_schema import (
     EtaRequest,
     EtaResponse,
 )
+from app.services.eta_service import calculate_eta as calculate_eta_service
 
 router = APIRouter()
 
@@ -21,25 +21,23 @@ async def calculate_eta(request: Request, payload: EtaRequest) -> EtaResponse:
     
     lang = request.headers.get("Accept-Language", "en")
 
-    # ===========================================================================================================
-    # Future integration with a real ETA calculation service would go here. For now, we return hardcoded values.
-    # ===========================================================================================================
-    
-    eta_seconds = 600
-    minutes = eta_seconds // 60
-    
-    # Quick inline fix for formatting
-    unit_label = "min" if "es" in lang.lower() else "min"
-    eta_formatted = f"{minutes} {unit_label} 0 s"
+    # Delegate calculation to the orchestration service
+    result = calculate_eta_service(
+        remaining_distance_m=payload.remaining_distance_m,
+        current_speed_kmh=payload.current_speed_kmh,
+        route_id=payload.route_id,
+        stop_id=payload.stop_id,
+        lang=lang
+    )
 
     return EtaResponse(
         data=EtaDataResponse(
             id=str(uuid.uuid4()),
             attributes=EtaAttributesResponse(
-                eta_seconds=eta_seconds,
-                eta_formatted=eta_formatted,
-                confidence=0.85,
-                calculated_at=datetime.now(timezone.utc).isoformat(),
+                eta_seconds=result["eta_seconds"],
+                eta_format=result["eta_format"],
+                confidence=result["confidence"],
+                calculated_at=result["calculated_at"],
             ),
         )
     )
