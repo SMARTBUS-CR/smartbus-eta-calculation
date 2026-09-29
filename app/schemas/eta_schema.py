@@ -28,7 +28,6 @@ class EtaAttributesResponse(BaseModel):
 
 class EtaDataResponse(BaseModel):
     type: str = Field("eta", description="Resource type delivered")
-    id: str = Field(..., json_schema_extra={"example": "0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"})
     attributes: EtaAttributesResponse
 
 class EtaResponse(BaseModel):

@@ -1,4 +1,3 @@
-import uuid
 from fastapi import APIRouter, status, Request
 from app.schemas.eta_schema import (
     EtaAttributesResponse,
@@ -32,7 +31,7 @@ async def calculate_eta(request: Request, payload: EtaRequest) -> EtaResponse:
 
     return EtaResponse(
         data=EtaDataResponse(
-            id=str(uuid.uuid4()),
+            # deleted uuid field as per JSON:API spec, since it's not relevant for this response
             attributes=EtaAttributesResponse(
                 eta_seconds=result["eta_seconds"],
                 eta_format=result["eta_format"],

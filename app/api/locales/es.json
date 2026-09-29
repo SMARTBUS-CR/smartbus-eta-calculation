@@ -1,0 +1,6 @@
+{
+    "errors.validation_title": "Error de validación",
+    "errors.eta_calculation_title": "Error en el cálculo de ETA",
+    "errors.internal_server_title": "Error interno del servidor",
+    "errors.unexpected": "Ocurrió un error inesperado."
+}
