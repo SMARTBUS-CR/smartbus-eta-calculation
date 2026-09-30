@@ -8,12 +8,12 @@ from app.api.v1.eta import router as eta_router
 from app.services.eta_service import EtaCalculationError
 from app.i18n import __, get_locale, _translations
 
-pydantic_dict = {
+pydantic_translations = {
     "en_US": _translations.get("en", {}),
     "es_ES": _translations.get("es", {})
 }
-loader = DictLoader(pydantic_dict)
-tr = PydanticI18n(loader)
+translation_loader = DictLoader(pydantic_translations)
+validation_translator = PydanticI18n(translation_loader)
 
 app = FastAPI(title="Smartbus ETA Calculation API")
 app.include_router(eta_router, prefix="/api/v1/eta", tags=["ETA"])
@@ -23,7 +23,9 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     lang_code = get_locale(request)
     pydantic_locale = "es_ES" if lang_code == "es" else "en_US"
     
-    translated_errors = tr.translate(exc.errors(), locale=pydantic_locale)
+    translated_errors = validation_translator.translate(
+        exc.errors(), locale=pydantic_locale
+    )
     formatted_errors = defaultdict(list)
 
     for error in translated_errors:
@@ -31,10 +33,10 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         formatted_errors[field_name].append(error["msg"])
 
     return JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         content={
             "message": __("errors.validation_title", request),
-            "errors": dict(formatted_errors)
+            "errors": dict(formatted_errors),
         },
     )
 
