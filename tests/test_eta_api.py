@@ -1,91 +1,141 @@
-"""Tests for ETA calculation API endpoints, Pydantic schemas validation, and i18n error handling."""
+"""End-to-end tests for the ETA API without mocked application components."""
 
 import unittest
-from unittest.mock import patch
+
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.services.eta_service import EtaCalculationError
 
 
 class EtaApiTests(unittest.TestCase):
-    """Integration and unit tests for the ETA endpoints and exception handlers."""
+    """Verify API validation, ML predictions, fallback, and service errors."""
 
     def setUp(self) -> None:
         self.client = TestClient(app, raise_server_exceptions=False)
 
-    def test_calculate_eta_success_default_language(self):
-        payload = {"remaining_distance_m": 3200.0, "current_speed_kmh": 32.5, "route_id": "R-101", "stop_id": "S-505"}
+    def test_ml_calculation_returns_the_complete_response(self):
+        payload = {
+            "remaining_distance_m": 1000.0,
+            "current_speed_kmh": 36.0,
+            "route_id": "R-101",
+            "stop_id": "S-505",
+        }
+
         response = self.client.post("/api/v1/eta/calculate", json=payload)
-        self.assertEqual(response.status_code, 200)
 
-    def test_calculate_eta_success_spanish_language(self):
-        payload = {"remaining_distance_m": 3200.0, "current_speed_kmh": 32.5, "route_id": "R-101", "stop_id": "S-505"}
-        headers = {"Accept-Language": "es-CR,es;q=0.9"}
-        response = self.client.post("/api/v1/eta/calculate", json=payload, headers=headers)
         self.assertEqual(response.status_code, 200)
+        attributes = response.json()["data"]["attributes"]
+        self.assertEqual(response.json()["data"]["type"], "eta")
+        self.assertEqual(attributes["remaining_distance_m"], 1000.0)
+        self.assertEqual(attributes["current_speed_kmh"], 36.0)
+        self.assertEqual(attributes["speed_m_s"], 10.0)
+        self.assertGreater(attributes["eta_seconds"], 0)
+        self.assertEqual(attributes["confidence"], 0.82)
+        self.assertEqual(attributes["route_id"], "R-101")
+        self.assertEqual(attributes["stop_id"], "S-505")
+        self.assertTrue(attributes["calculated_at"].endswith("Z"))
 
-    def test_validation_error_negative_distance_spanish(self):
-        payload = {"remaining_distance_m": -10.0, "current_speed_kmh": 32.5, "route_id": "R-101", "stop_id": "S-505"}
-        headers = {"Accept-Language": "es"}
-        response = self.client.post("/api/v1/eta/calculate", json=payload, headers=headers)
-        
+    def test_fallback_calculation_uses_lower_confidence(self):
+        payload = {
+            "remaining_distance_m": 1000.0,
+            "current_speed_kmh": 1.0,
+            "route_id": "R-101",
+            "stop_id": "S-505",
+        }
+
+        response = self.client.post("/api/v1/eta/calculate", json=payload)
+
+        self.assertEqual(response.status_code, 200)
+        attributes = response.json()["data"]["attributes"]
+        self.assertEqual(attributes["eta_seconds"], 3600)
+        self.assertEqual(attributes["eta_format"], "60 min 0 s")
+        self.assertEqual(attributes["confidence"], 0.5)
+
+    def test_spanish_request_keeps_the_eta_response_contract(self):
+        payload = {
+            "remaining_distance_m": 1000.0,
+            "current_speed_kmh": 36.0,
+            "route_id": "R-101",
+            "stop_id": "S-505",
+        }
+
+        response = self.client.post(
+            "/api/v1/eta/calculate",
+            json=payload,
+            headers={"Accept-Language": "es-CR,es;q=0.9"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["data"]["attributes"]["confidence"], 0.82)
+
+    def test_negative_distance_returns_localized_422(self):
+        payload = {
+            "remaining_distance_m": -10.0,
+            "current_speed_kmh": 32.5,
+            "route_id": "R-101",
+            "stop_id": "S-505",
+        }
+
+        response = self.client.post(
+            "/api/v1/eta/calculate",
+            json=payload,
+            headers={"Accept-Language": "es"},
+        )
+
         self.assertEqual(response.status_code, 422)
         body = response.json()
         self.assertEqual(body["message"], "Error de validación")
         self.assertIn("remaining_distance_m", body["errors"])
 
-    def test_validation_error_zero_speed_english(self):
-        payload = {"remaining_distance_m": 100.0, "current_speed_kmh": 0.0, "route_id": "R-101", "stop_id": "S-505"}
-        headers = {"Accept-Language": "en"}
-        response = self.client.post("/api/v1/eta/calculate", json=payload, headers=headers)
-        
-        self.assertEqual(response.status_code, 422)
-        body = response.json()
-        self.assertIn("current_speed_kmh", body["errors"])
+    def test_zero_speed_returns_422(self):
+        payload = {
+            "remaining_distance_m": 100.0,
+            "current_speed_kmh": 0.0,
+            "route_id": "R-101",
+            "stop_id": "S-505",
+        }
 
-    def test_validation_error_missing_field_english(self):
-        payload = {"current_speed_kmh": 32.5}
-        headers = {"Accept-Language": "en"}
-        response = self.client.post("/api/v1/eta/calculate", json=payload, headers=headers)
-        
+        response = self.client.post("/api/v1/eta/calculate", json=payload)
+
+        self.assertEqual(response.status_code, 422)
+        self.assertIn("current_speed_kmh", response.json()["errors"])
+
+    def test_missing_required_fields_return_422(self):
+        response = self.client.post(
+            "/api/v1/eta/calculate", json={"current_speed_kmh": 32.5}
+        )
+
         self.assertEqual(response.status_code, 422)
         self.assertIn("remaining_distance_m", response.json()["errors"])
+        self.assertIn("route_id", response.json()["errors"])
+        self.assertIn("stop_id", response.json()["errors"])
 
-    def test_eta_calculation_error_503_spanish(self):
-        payload = {"remaining_distance_m": 3200.0, "current_speed_kmh": 32.5, "route_id": "R-101", "stop_id": "S-505"}
-        headers = {"Accept-Language": "es"}
-        
-        # Mock the service to raise EtaCalculationError
-        with patch("app.api.v1.eta.calculate_eta_service", side_effect=EtaCalculationError("errors.unexpected")):
-            response = self.client.post("/api/v1/eta/calculate", json=payload, headers=headers)
-        
+    def test_non_finite_input_returns_422(self):
+        payload = {
+            "remaining_distance_m": 100.0,
+            "current_speed_kmh": "Infinity",
+            "route_id": "R-101",
+            "stop_id": "S-505",
+        }
+
+        response = self.client.post("/api/v1/eta/calculate", json=payload)
+
+        self.assertEqual(response.status_code, 422)
+        self.assertIn("current_speed_kmh", response.json()["errors"])
+
+    def test_real_calculation_failure_returns_503(self):
+        payload = {
+            "remaining_distance_m": 1000.0,
+            "current_speed_kmh": 5e-324,
+            "route_id": "R-101",
+            "stop_id": "S-505",
+        }
+
+        response = self.client.post("/api/v1/eta/calculate", json=payload)
+
         self.assertEqual(response.status_code, 503)
-        body = response.json()
-        self.assertEqual(body["message"], "Error en el cálculo de ETA")
-        self.assertEqual(body["errors"]["service"][0], "Ocurrió un error inesperado.")
+        self.assertEqual(response.json()["message"], "ETA Calculation Error")
 
-    def test_internal_server_error_500_spanish(self):
-        payload = {"remaining_distance_m": 3200.0, "current_speed_kmh": 32.5, "route_id": "R-101", "stop_id": "S-505"}
-        headers = {"Accept-Language": "es"}
-        
-        with patch("app.api.v1.eta.uuid.uuid4", side_effect=RuntimeError("System crash")):
-            response = self.client.post("/api/v1/eta/calculate", json=payload, headers=headers)
-        
-        self.assertEqual(response.status_code, 500)
-        body = response.json()
-        self.assertEqual(body["message"], "Error interno del servidor")
-
-    def test_internal_server_error_500_english(self):
-        payload = {"remaining_distance_m": 3200.0, "current_speed_kmh": 32.5, "route_id": "R-101", "stop_id": "S-505"}
-        headers = {"Accept-Language": "en"}
-        
-        with patch("app.api.v1.eta.uuid.uuid4", side_effect=RuntimeError("System crash")):
-            response = self.client.post("/api/v1/eta/calculate", json=payload, headers=headers)
-        
-        self.assertEqual(response.status_code, 500)
-        body = response.json()
-        self.assertEqual(body["message"], "Internal Server Error")
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,25 +1,37 @@
+"""Translation helpers for API error responses."""
+
 import json
 from pathlib import Path
+
 from fastapi import Request
 
-_translations = {}
-LOCALES_DIR = Path(__file__).parent / "api" / "locales"
 
-# Carga de archivos JSON en memoria
-if LOCALES_DIR.exists():
+LOCALES_DIR = Path(__file__).parent / "api" / "locales"
+_translations: dict[str, dict[str, str]] = {}
+
+
+def _load_translations() -> dict[str, dict[str, str]]:
+    """Load JSON translation files from the local API locale directory."""
+    translations: dict[str, dict[str, str]] = {}
+    if not LOCALES_DIR.exists():
+        return translations
+
     for file_path in LOCALES_DIR.glob("*.json"):
-        lang_code = file_path.stem
-        with open(file_path, "r", encoding="utf-8") as f:
-            _translations[lang_code] = json.load(f)
+        with file_path.open(encoding="utf-8") as file:
+            translations[file_path.stem] = json.load(file)
+    return translations
+
+
+_translations = _load_translations()
+
 
 def get_locale(request: Request) -> str:
-    """Extrae el idioma del header de forma genérica."""
-    lang = request.headers.get("Accept-Language", "en").lower()
-    return "es" if "es" in lang else "en"
+    """Return the supported language selected by the request header."""
+    language = request.headers.get("Accept-Language", "en").lower()
+    return "es" if "es" in language else "en"
+
 
 def __(key: str, request: Request) -> str:
+    """Return the localized message for a translation key."""
     locale = get_locale(request)
-    
-    # Busca directamente la llave plana (ej. "errors.internal_server_title")
-    value = _translations.get(locale, {})
-    return value.get(key, key)
+    return _translations.get(locale, {}).get(key, key)

@@ -1,0 +1,140 @@
+SMARTBUS ETA CALCULATION SERVICE
+RUN AND TEST GUIDE
+
+1. PREREQUISITES
+
+- Python 3.13.15 or a compatible Python version.
+- A terminal opened at the repository root.
+
+2. CREATE THE VIRTUAL ENVIRONMENT
+
+Windows PowerShell:
+
+  python -m venv .venv
+
+3. INSTALL DEPENDENCIES
+
+  .\.venv\Scripts\python.exe -m pip install -r requirements.txt
+
+4. RUN THE API
+
+Set these variables when OpenBLAS thread creation is limited by the local machine:
+
+  $env:OPENBLAS_NUM_THREADS = '1'
+  $env:OMP_NUM_THREADS = '1'
+
+Start the development server:
+
+  .\.venv\Scripts\python.exe -m uvicorn app.main:app --reload
+
+The API is available at:
+
+  http://127.0.0.1:8000
+
+The ETA endpoint is:
+
+  POST http://127.0.0.1:8000/api/v1/eta/calculate
+
+5. TEST A REAL ML PREDICTION
+
+Open another PowerShell terminal while the server is running:
+
+  $body = @{
+      remaining_distance_m = 1000.0
+      current_speed_kmh = 36.0
+      route_id = 'R-101'
+      stop_id = 'S-505'
+  } | ConvertTo-Json
+
+  Invoke-RestMethod -Method Post `
+      -Uri 'http://127.0.0.1:8000/api/v1/eta/calculate' `
+      -ContentType 'application/json' `
+      -Body $body
+
+Expected behavior:
+
+- HTTP 200.
+- The ML model predicts eta_seconds.
+- confidence is 0.82.
+- speed_m_s is 10.0.
+- The response preserves route_id and stop_id.
+
+6. TEST A REAL FALLBACK CALCULATION
+
+Use a valid speed below the ML training range. The ML component rejects the input and the deterministic fallback calculates the ETA:
+
+  $body = @{
+      remaining_distance_m = 1000.0
+      current_speed_kmh = 1.0
+      route_id = 'R-101'
+      stop_id = 'S-505'
+  } | ConvertTo-Json
+
+  Invoke-RestMethod -Method Post `
+      -Uri 'http://127.0.0.1:8000/api/v1/eta/calculate' `
+      -ContentType 'application/json' `
+      -Body $body
+
+Expected behavior:
+
+- HTTP 200.
+- eta_seconds is 3600.
+- eta_format is "60 min 0 s".
+- confidence is 0.50.
+
+7. TEST REQUEST VALIDATION
+
+Use a zero speed to receive HTTP 422:
+
+  $body = @{
+      remaining_distance_m = 100.0
+      current_speed_kmh = 0.0
+      route_id = 'R-101'
+      stop_id = 'S-505'
+  } | ConvertTo-Json
+
+  try {
+      Invoke-RestMethod -Method Post `
+          -Uri 'http://127.0.0.1:8000/api/v1/eta/calculate' `
+          -ContentType 'application/json' `
+          -Headers @{ 'Accept-Language' = 'en' } `
+          -Body $body
+  } catch {
+      $_.ErrorDetails.Message
+  }
+
+Expected behavior:
+
+- HTTP 422.
+- The returned error identifies current_speed_kmh.
+
+8. RUN ALL AUTOMATED TESTS
+
+  $env:OPENBLAS_NUM_THREADS = '1'
+  $env:OMP_NUM_THREADS = '1'
+  .\.venv\Scripts\python.exe -m unittest discover -s tests -t . -p 'test_*.py' -v
+
+Expected result:
+
+  Ran 32 tests in ...
+  OK
+
+9. RUN ONLY API TESTS
+
+  .\.venv\Scripts\python.exe -m unittest tests.test_eta_api -v
+
+10. RUN ONLY SERVICE TESTS
+
+  .\.venv\Scripts\python.exe -m unittest discover -s tests/services -t . -p 'test_*.py' -v
+
+11. VERIFY DEPENDENCIES
+
+  .\.venv\Scripts\python.exe -m pip check
+
+
+12. CURRENT MODEL LIMITS
+
+- The ML model accepts distances from 0 to 20,000 meters.
+- The ML model accepts speeds from 5 to 100 km/h.
+- Values outside that range use the deterministic fallback when possible.
+- A speed less than or equal to zero is rejected by the API.
