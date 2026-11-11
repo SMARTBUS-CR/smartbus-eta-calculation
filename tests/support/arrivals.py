@@ -35,3 +35,17 @@ def make_arrivals_payload():
             for stop in plan["stop_occurrences"]
         ],
     }
+
+
+def make_confirmed_arrival_payload():
+    payload = make_arrivals_payload()
+    confirmed, upcoming = payload["targets"]
+    progress = confirmed["remaining_distance_m"]
+    payload["tracking"].update(
+        current_speed_kmh=0.0,
+        distance_along_route_m=progress,
+        confirmed_stop_occurrence_id=confirmed["stop_occurrence_id"],
+    )
+    confirmed["remaining_distance_m"] = 0.0
+    upcoming["remaining_distance_m"] -= progress
+    return payload

@@ -52,8 +52,16 @@ def calculate_batch_arrivals(
     problem = _observation_problem(payload, context, source_age)
     speed = payload.tracking.current_speed_kmh
     confirmed = payload.tracking.confirmed_stop_occurrence_id
+    confirmed_at = min(payload.observed_at, calculated_at)
     arrivals = [
-        _estimate_arrival(target, stop, calculated_at, speed, problem, confirmed == stop.occurrence_id)
+        _estimate_arrival(
+            target,
+            stop,
+            calculated_at,
+            speed,
+            problem,
+            confirmed_at if confirmed == stop.occurrence_id else None,
+        )
         for target, stop in targets
     ]
     return BatchArrivalsAttributes(
@@ -130,14 +138,18 @@ def _estimate_arrival(
     calculated_at: datetime,
     speed: float | None,
     problem: ArrivalQualityReason | None,
-    confirmed: bool,
+    confirmed_at: datetime | None,
 ) -> ArrivalEstimate:
     seconds = None
     arrival_at = None
     reason = problem
     if reason is None:
-        if target.remaining_distance_m == 0:
-            reason = "calculation_unavailable" if confirmed else "arrival_unconfirmed"
+        if confirmed_at is not None:
+            seconds = 0
+            arrival_at = confirmed_at
+            reason = "confirmed_arrival"
+        elif target.remaining_distance_m == 0:
+            reason = "arrival_unconfirmed"
         elif speed is None or speed == 0:
             reason = "no_usable_speed"
         else:
@@ -148,7 +160,9 @@ def _estimate_arrival(
             except (ValueError, OverflowError):
                 reason = "calculation_unavailable"
 
-    if seconds is not None:
+    if reason == "confirmed_arrival":
+        method = "arrived"
+    elif seconds is not None:
         method = "distance_speed"
     elif stop.planned_arrival_at is not None and reason != "calculation_unavailable":
         method = "scheduled_reference"

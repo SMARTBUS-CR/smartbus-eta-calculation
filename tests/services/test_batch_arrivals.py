@@ -11,7 +11,11 @@ from app.services.batch_arrivals import (
     TripNotEstimable,
     calculate_batch_arrivals,
 )
-from tests.support.arrivals import make_arrivals_payload, make_arrivals_plan
+from tests.support.arrivals import (
+    make_arrivals_payload,
+    make_arrivals_plan,
+    make_confirmed_arrival_payload,
+)
 
 
 CALCULATED_AT = datetime(2026, 10, 21, 15, 5, tzinfo=timezone.utc)
@@ -157,6 +161,53 @@ class BatchArrivalsTests(unittest.TestCase):
         self.assertIsNone(arrivals[0]["eta_seconds"])
         self.assertEqual(arrivals[0]["quality_reason"], "arrival_unconfirmed")
         self.assertEqual(arrivals[1]["eta_seconds"], 150)
+
+    def test_marks_only_the_confirmed_occurrence_arrived_at_its_observation_time(self):
+        cases = (
+            ("2026-10-21T15:04:57.250000Z", "2026-10-21T15:04:57.250000Z"),
+            ("2026-10-21T15:05:05Z", "2026-10-21T15:05:00Z"),
+        )
+        for observed_at, arrival_at in cases:
+            with self.subTest(observed_at=observed_at):
+                payload = make_confirmed_arrival_payload()
+                payload["observed_at"] = observed_at
+
+                result = self.calculate(payload)
+                confirmed, upcoming = result["arrivals"]
+
+                self.assertEqual(result["observed_at"], observed_at)
+                self.assertEqual(confirmed["stop_id"], upcoming["stop_id"])
+                self.assertEqual(confirmed["eta_seconds"], 0)
+                self.assertEqual(confirmed["arrival_at"], arrival_at)
+                self.assertEqual(confirmed["method"], "arrived")
+                self.assertEqual(confirmed["quality_reason"], "confirmed_arrival")
+                self.assertEqual(confirmed["planned_arrival_at"], "2026-10-21T15:00:00Z")
+                self.assertIsNone(upcoming["eta_seconds"])
+                self.assertIsNone(upcoming["arrival_at"])
+                self.assertEqual(upcoming["quality_reason"], "no_usable_speed")
+
+    def test_observation_quality_and_trip_state_take_precedence_over_confirmation(self):
+        cases = (
+            ("scheduled", "2026-10-21T15:04:00Z", False, None, "trip_not_started"),
+            ("in_progress", "2026-10-21T15:04:00Z", False, None, "stale_observation"),
+            ("in_progress", "2026-10-21T15:05:00Z", False, None, "off_route"),
+            ("in_progress", "2026-10-21T15:05:00Z", True, None, "poor_accuracy"),
+        )
+        for status, observed_at, on_route, accuracy, reason in cases:
+            with self.subTest(reason=reason):
+                plan = make_arrivals_plan()
+                plan["status"] = status
+                payload = make_confirmed_arrival_payload()
+                payload["observed_at"] = observed_at
+                payload["tracking"].update(on_route=on_route, accuracy_meters=accuracy)
+
+                result = self.calculate(payload, plan)
+                confirmed = result["arrivals"][0]
+
+                self.assertEqual(confirmed["method"], "scheduled_reference")
+                self.assertEqual(confirmed["quality_reason"], reason)
+                self.assertIsNone(confirmed["eta_seconds"])
+                self.assertIsNone(confirmed["arrival_at"])
 
     def test_scheduled_and_terminal_trips_cannot_produce_live_estimates(self):
         plan = make_arrivals_plan()

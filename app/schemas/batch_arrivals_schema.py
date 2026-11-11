@@ -88,6 +88,7 @@ class BatchArrivalsRequest(BaseModel):
 
 ArrivalQualityReason = Literal[
     "current_speed",
+    "confirmed_arrival",
     "trip_not_started",
     "stale_observation",
     "off_route",
@@ -106,7 +107,7 @@ class ArrivalEstimate(BaseModel):
     eta_seconds: Annotated[int, Field(ge=0)] | None
     arrival_at: UtcInstant | None
     planned_arrival_at: UtcInstant | None
-    method: Literal["distance_speed", "scheduled_reference", "unavailable"]
+    method: Literal["distance_speed", "arrived", "scheduled_reference", "unavailable"]
     quality_reason: ArrivalQualityReason
     model_version: str | None
 
