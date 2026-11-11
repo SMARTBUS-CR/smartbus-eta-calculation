@@ -1,16 +1,13 @@
 """Internal API for correlated batch arrival estimates."""
 
-import os
 from datetime import datetime, timezone
-from secrets import compare_digest
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Body, Depends, Security
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi import APIRouter, Body, Depends
 
+from app.api.arrivals_dependencies import authenticate_eta_service, load_arrivals_settings
 from app.api.arrivals_errors import ArrivalErrors, ArrivalsApiError, JsonApiResponse, json_pointer
-from app.config import ArrivalQualityPolicy, TripContextSettings
 from app.schemas.batch_arrivals_schema import (
     ARRIVALS_REQUEST_EXAMPLE,
     ARRIVALS_RESPONSE_EXAMPLE,
@@ -29,21 +26,6 @@ from app.services.trip_context_provider import (
 
 
 router = APIRouter()
-service_bearer = HTTPBearer(
-    auto_error=False,
-    scheme_name="EtaServiceBearer",
-    description="Service credential configured as ETA_SERVICE_KEY.",
-)
-
-
-def authenticate_arrivals(
-    credentials: Annotated[HTTPAuthorizationCredentials | None, Security(service_bearer)],
-) -> None:
-    key = os.environ.get("ETA_SERVICE_KEY")
-    if key is None or not key.strip():
-        raise ArrivalsApiError(503, "eta_not_ready")
-    if credentials is None or not compare_digest(credentials.credentials.encode(), key.encode()):
-        raise ArrivalsApiError(401, "unauthorized_service")
 
 
 ERROR_RESPONSES = {
@@ -67,7 +49,7 @@ ERROR_RESPONSES[401]["headers"] = {
     "/trips/{trip_id}/arrivals",
     response_model=BatchArrivalsResponse,
     response_class=JsonApiResponse,
-    dependencies=[Depends(authenticate_arrivals)],
+    dependencies=[Depends(authenticate_eta_service)],
     summary="Calculate ordered arrival estimates for a Trip",
     responses={
         200: {"content": {JsonApiResponse.media_type: {"example": ARRIVALS_RESPONSE_EXAMPLE}}},
@@ -87,11 +69,7 @@ def trip_arrivals(
     or recent effective speed. Degraded observations return a planned reference
     when available, with null live fields.
     """
-    try:
-        settings = TripContextSettings.from_environment()
-        quality_policy = ArrivalQualityPolicy.from_environment()
-    except ValueError as error:
-        raise ArrivalsApiError(503, "eta_not_ready") from error
+    settings, quality_policy = load_arrivals_settings()
 
     try:
         with open_trip_context_provider(settings) as provider:
