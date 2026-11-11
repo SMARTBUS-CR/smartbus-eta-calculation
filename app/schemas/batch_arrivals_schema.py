@@ -88,6 +88,7 @@ class BatchArrivalsRequest(BaseModel):
 
 ArrivalQualityReason = Literal[
     "current_speed",
+    "recent_effective_speed",
     "confirmed_arrival",
     "trip_not_started",
     "stale_observation",

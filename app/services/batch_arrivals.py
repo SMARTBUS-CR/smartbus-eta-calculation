@@ -9,6 +9,7 @@ from app.schemas.batch_arrivals_schema import (
     ArrivalTarget,
     BatchArrivalsAttributes,
     BatchArrivalsRequest,
+    TrackingProgress,
 )
 from app.schemas.trip_context_schema import TripContext, TripStopOccurrence
 from app.services.fallback import calculate_fallback_eta
@@ -17,6 +18,7 @@ from app.services.fallback import calculate_fallback_eta
 MAX_FUTURE_SKEW = timedelta(seconds=5)
 MAX_OBSERVATION_AGE_SECONDS = 30
 MAX_ACCURACY_METERS = 100
+MAX_EFFECTIVE_SPEED_AGE_SECONDS = 30
 DISTANCE_TOLERANCE_METERS = 1
 
 
@@ -50,7 +52,7 @@ def calculate_batch_arrivals(
 
     source_age = max(0.0, (calculated_at - payload.observed_at).total_seconds())
     problem = _observation_problem(payload, context, source_age)
-    speed = payload.tracking.current_speed_kmh
+    speed, speed_reason = _select_speed(payload.tracking, calculated_at)
     confirmed = payload.tracking.confirmed_stop_occurrence_id
     confirmed_at = min(payload.observed_at, calculated_at)
     arrivals = [
@@ -61,6 +63,7 @@ def calculate_batch_arrivals(
             speed,
             problem,
             confirmed_at if confirmed == stop.occurrence_id else None,
+            speed_reason,
         )
         for target, stop in targets
     ]
@@ -132,6 +135,25 @@ def _observation_problem(
     return None
 
 
+def _select_speed(
+    tracking: TrackingProgress, calculated_at: datetime
+) -> tuple[float | None, ArrivalQualityReason]:
+    current = tracking.current_speed_kmh
+    if current is not None and current > 0:
+        return current, "current_speed"
+
+    effective = tracking.effective_speed_kmh
+    effective_at = tracking.effective_speed_observed_at
+    if (
+        effective is not None
+        and effective > 0
+        and effective_at is not None
+        and (calculated_at - effective_at).total_seconds() <= MAX_EFFECTIVE_SPEED_AGE_SECONDS
+    ):
+        return effective, "recent_effective_speed"
+    return None, "no_usable_speed"
+
+
 def _estimate_arrival(
     target: ArrivalTarget,
     stop: TripStopOccurrence,
@@ -139,6 +161,7 @@ def _estimate_arrival(
     speed: float | None,
     problem: ArrivalQualityReason | None,
     confirmed_at: datetime | None,
+    speed_reason: ArrivalQualityReason,
 ) -> ArrivalEstimate:
     seconds = None
     arrival_at = None
@@ -150,8 +173,8 @@ def _estimate_arrival(
             reason = "confirmed_arrival"
         elif target.remaining_distance_m == 0:
             reason = "arrival_unconfirmed"
-        elif speed is None or speed == 0:
-            reason = "no_usable_speed"
+        elif speed is None:
+            reason = speed_reason
         else:
             try:
                 estimate = ceil(calculate_fallback_eta(target.remaining_distance_m, speed))
@@ -177,6 +200,6 @@ def _estimate_arrival(
         arrival_at=arrival_at,
         planned_arrival_at=stop.planned_arrival_at,
         method=method,
-        quality_reason=reason or "current_speed",
+        quality_reason=reason or speed_reason,
         model_version=None,
     )

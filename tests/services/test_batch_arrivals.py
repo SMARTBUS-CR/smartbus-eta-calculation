@@ -22,13 +22,13 @@ CALCULATED_AT = datetime(2026, 10, 21, 15, 5, tzinfo=timezone.utc)
 
 
 class BatchArrivalsTests(unittest.TestCase):
-    def calculate(self, payload=None, plan=None):
+    def calculate(self, payload=None, plan=None, *, calculated_at=CALCULATED_AT):
         return calculate_batch_arrivals(
             BatchArrivalsRequest.model_validate(
                 make_arrivals_payload() if payload is None else payload
             ),
             TripContext.model_validate(make_arrivals_plan() if plan is None else plan),
-            calculated_at=CALCULATED_AT,
+            calculated_at=calculated_at,
         ).model_dump(mode="json")
 
     def test_calculates_ordered_estimates_for_repeated_stop_visits(self):
@@ -208,6 +208,95 @@ class BatchArrivalsTests(unittest.TestCase):
                 self.assertEqual(confirmed["quality_reason"], reason)
                 self.assertIsNone(confirmed["eta_seconds"])
                 self.assertIsNone(confirmed["arrival_at"])
+
+    def test_uses_recent_effective_speed_only_when_current_speed_is_unusable(self):
+        cases = (
+            (0, 18, "2026-10-21T15:04:30Z", "recent_effective_speed", 200),
+            (None, 18, "2026-10-21T15:04:59Z", "recent_effective_speed", 200),
+            (0, 18, "2026-10-21T15:05:05Z", "recent_effective_speed", 200),
+            (0, 18, "2026-10-21T15:04:29.999999Z", "no_usable_speed", None),
+            (0, 0, "2026-10-21T15:04:59Z", "no_usable_speed", None),
+            (None, None, None, "no_usable_speed", None),
+            (36, 18, "2026-10-21T15:04:59Z", "current_speed", 100),
+        )
+        for current, effective, effective_at, reason, seconds in cases:
+            with self.subTest(current=current, effective=effective, effective_at=effective_at):
+                payload = make_arrivals_payload()
+                payload["tracking"].update(
+                    current_speed_kmh=current,
+                    effective_speed_kmh=effective,
+                    effective_speed_observed_at=effective_at,
+                )
+
+                result = self.calculate(payload)
+                arrival = result["arrivals"][0]
+
+                self.assertEqual(result, self.calculate(payload))
+                self.assertEqual(arrival["quality_reason"], reason)
+                self.assertEqual(arrival["eta_seconds"], seconds)
+                self.assertEqual(
+                    arrival["method"], "scheduled_reference" if seconds is None else "distance_speed"
+                )
+                if reason == "recent_effective_speed":
+                    self.assertEqual(arrival["arrival_at"], "2026-10-21T15:08:20Z")
+                elif seconds is None:
+                    self.assertIsNone(arrival["arrival_at"])
+
+    def test_fresh_effective_speed_cannot_rescue_an_unusable_observation(self):
+        cases = (
+            ("2026-10-21T15:04:29Z", True, 10, "stale_observation"),
+            ("2026-10-21T15:05:00Z", False, 10, "off_route"),
+            ("2026-10-21T15:05:00Z", True, 100.01, "poor_accuracy"),
+        )
+        for observed_at, on_route, accuracy, reason in cases:
+            with self.subTest(reason=reason):
+                payload = make_arrivals_payload()
+                payload["observed_at"] = observed_at
+                payload["tracking"].update(
+                    current_speed_kmh=0,
+                    effective_speed_kmh=18,
+                    effective_speed_observed_at="2026-10-21T15:04:59Z",
+                    on_route=on_route,
+                    accuracy_meters=accuracy,
+                )
+
+                arrival = self.calculate(payload)["arrivals"][0]
+
+                self.assertEqual(arrival["quality_reason"], reason)
+                self.assertEqual(arrival["method"], "scheduled_reference")
+                self.assertIsNone(arrival["eta_seconds"])
+                self.assertIsNone(arrival["arrival_at"])
+
+    def test_rejects_an_effective_speed_timestamp_beyond_future_skew(self):
+        payload = make_arrivals_payload()
+        payload["tracking"].update(
+            effective_speed_kmh=18,
+            effective_speed_observed_at="2026-10-21T15:05:05.000001Z",
+        )
+
+        with self.assertRaises(BatchInputError) as error:
+            self.calculate(payload)
+        self.assertEqual(error.exception.path, ("tracking", "effective_speed_observed_at"))
+
+    def test_preserves_past_future_and_missing_planned_times_across_local_midnight(self):
+        calculated_at = datetime(2026, 10, 22, 6, 5, tzinfo=timezone.utc)
+        for planned_at in ("2026-10-22T05:55:00Z", "2026-10-22T06:15:00Z", None):
+            with self.subTest(planned_at=planned_at):
+                plan = make_arrivals_plan()
+                plan["planned_departure_at"] = "2026-10-22T05:45:00Z"
+                plan["planned_arrival_at"] = "2026-10-22T06:30:00Z"
+                plan["stop_occurrences"][0]["planned_arrival_at"] = planned_at
+                plan["stop_occurrences"][1]["planned_arrival_at"] = plan["planned_arrival_at"]
+                payload = make_arrivals_payload()
+                payload["observed_at"] = "2026-10-22T06:05:00Z"
+                payload["tracking"]["current_speed_kmh"] = 0
+
+                arrival = self.calculate(payload, plan, calculated_at=calculated_at)["arrivals"][0]
+
+                self.assertEqual(arrival["planned_arrival_at"], planned_at)
+                self.assertEqual(arrival["method"], "unavailable" if planned_at is None else "scheduled_reference")
+                self.assertIsNone(arrival["eta_seconds"])
+                self.assertIsNone(arrival["arrival_at"])
 
     def test_scheduled_and_terminal_trips_cannot_produce_live_estimates(self):
         plan = make_arrivals_plan()
