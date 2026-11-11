@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse
 from pydantic_i18n import PydanticI18n, DictLoader
 
 from app.api.arrivals_errors import ArrivalsApiError, validation_response
+from app.api.health import router as health_router
 from app.api.v1.arrivals import router as arrivals_router, trip_arrivals
 
 from app.api.v1.eta import router as eta_router
@@ -21,6 +22,7 @@ validation_translator = PydanticI18n(translation_loader)
 app = FastAPI(title="Smartbus ETA Calculation API")
 app.include_router(eta_router, prefix="/api/v1/eta", tags=["ETA"])
 app.include_router(arrivals_router, prefix="/api/v1/eta", tags=["ETA"])
+app.include_router(health_router)
 
 @app.exception_handler(ArrivalsApiError)
 async def arrivals_exception_handler(request: Request, exc: ArrivalsApiError):
