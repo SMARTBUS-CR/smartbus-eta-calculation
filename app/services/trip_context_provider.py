@@ -78,6 +78,7 @@ class HttpTripContextProvider:
         try:
             response = self._client.get(
                 f"/api/internal/v1/trips/{trip_id}/tracking-context",
+                params={"projection": "eta-v1"},
                 headers=headers,
                 timeout=self._timeout_seconds,
                 follow_redirects=False,

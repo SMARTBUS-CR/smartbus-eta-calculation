@@ -50,7 +50,8 @@ class HttpTripContextProviderTests(unittest.TestCase):
         self.assertEqual(requests[0].method, "GET")
         self.assertEqual(
             str(requests[0].url),
-            f"https://dashboard.test/api/internal/v1/trips/{trip_id}/tracking-context",
+            f"https://dashboard.test/api/internal/v1/trips/{trip_id}/tracking-context"
+            "?projection=eta-v1",
         )
 
     def test_rejects_context_for_a_different_trip(self):
@@ -388,7 +389,7 @@ class HttpTripContextProviderTests(unittest.TestCase):
         self.assertEqual(
             str(requests[0].url),
             f"https://dashboard.test/api/internal/v1/trips/"
-            f"{payload['trip_id']}/tracking-context",
+            f"{payload['trip_id']}/tracking-context?projection=eta-v1",
         )
         self.assertEqual(
             requests[0].headers["Authorization"],
