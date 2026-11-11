@@ -6,7 +6,13 @@ from uuid import UUID
 from fastapi import APIRouter, Depends
 
 from app.api.arrivals_dependencies import authenticate_eta_service, load_arrivals_settings
-from app.api.arrivals_errors import ArrivalErrors, ArrivalsApiError, JsonApiResponse, json_pointer
+from app.api.arrivals_errors import (
+    ArrivalErrors,
+    ArrivalsApiError,
+    JsonApiResponse,
+    arrival_error_example,
+    json_pointer,
+)
 from app.schemas.batch_arrivals_schema import (
     BatchArrivalsData,
     BatchArrivalsRequest,
@@ -26,15 +32,29 @@ router = APIRouter()
 
 
 ERROR_RESPONSES = {
-    code: {"model": ArrivalErrors, "description": description}
-    for code, description in {
-        401: "Missing or invalid ETA service credential.",
-        404: "Trip context not found.",
-        409: "Trip is not estimable or its route revision has changed.",
-        422: "Invalid request or tracking progress.",
-        500: "Unexpected server failure.",
-        502: "Dashboard returned an invalid response.",
-        503: "ETA is not configured or Dashboard is unavailable.",
+    status: {
+        "model": ArrivalErrors,
+        "description": description,
+        "content": {
+            JsonApiResponse.media_type: {
+                "examples": {code: {"value": arrival_error_example(status, code)} for code in codes},
+            }
+        },
+    }
+    for status, (description, codes) in {
+        401: ("Missing or invalid ETA service credential.", ("unauthorized_service",)),
+        404: ("Trip context not found.", ("trip_context_not_found",)),
+        409: (
+            "Trip is not estimable or its route revision has changed.",
+            ("route_revision_mismatch", "trip_not_estimable"),
+        ),
+        422: ("Invalid request or tracking progress.", ("invalid_input",)),
+        500: ("Unexpected server failure.", ("internal_error",)),
+        502: ("Dashboard returned an invalid response.", ("trip_context_invalid_response",)),
+        503: (
+            "ETA is not configured or Dashboard is unavailable.",
+            ("eta_not_ready", "trip_context_unavailable"),
+        ),
     }.items()
 }
 ERROR_RESPONSES[401]["headers"] = {
