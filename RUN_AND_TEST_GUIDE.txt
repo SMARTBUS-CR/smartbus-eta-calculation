@@ -147,5 +147,20 @@ Discovery includes the API, schema, and service suites.
   Use the moving_bus example in /docs, substituting the saved trip revision,
   occurrence IDs, route progress and a fresh UTC observed_at.
 - A usable moving observation returns ordered JSON:API arrivals with separate
-  live and planned times. Effective-speed and confirmed-arrival estimates are
-  covered by the follow-up quality policy in issue #19.
+  live and planned times. A fresh positive effective speed can be used when
+  current speed is zero or unknown (quality_reason=recent_effective_speed).
+- An explicit, usable stop confirmation returns method=arrived, eta_seconds=0
+  and quality_reason=confirmed_arrival for that occurrence. The arrival time
+  is capped at the server calculation time.
+- A degraded observation returns scheduled_reference or unavailable with null
+  live fields. The planned time remains available when supplied by Dashboard.
+
+Batch quality limits are inclusive and configurable in the environment:
+
+  ETA_MAX_OBSERVATION_AGE_SECONDS=30
+  ETA_MAX_FUTURE_SKEW_SECONDS=5
+  ETA_MAX_ACCURACY_METERS=100
+  ETA_MAX_EFFECTIVE_SPEED_AGE_SECONDS=30
+
+Values must be finite and nonnegative. Invalid configuration returns
+503 eta_not_ready. Observations past the allowed future skew return 422.

@@ -4,6 +4,7 @@ import unittest
 from datetime import datetime, timezone
 from unittest.mock import patch
 
+from app.config import ArrivalQualityPolicy
 from app.schemas.batch_arrivals_schema import BatchArrivalsRequest
 from app.schemas.trip_context_schema import TripContext
 from app.services.batch_arrivals import (
@@ -29,6 +30,7 @@ class BatchArrivalsTests(unittest.TestCase):
             ),
             TripContext.model_validate(make_arrivals_plan() if plan is None else plan),
             calculated_at=calculated_at,
+            quality_policy=ArrivalQualityPolicy(),
         ).model_dump(mode="json")
 
     def test_calculates_ordered_estimates_for_repeated_stop_visits(self):

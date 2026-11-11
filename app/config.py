@@ -1,4 +1,4 @@
-"""Environment configuration for operational service integration."""
+"""Environment configuration for ETA and its operational dependencies."""
 
 from dataclasses import dataclass, field
 from math import isfinite
@@ -57,3 +57,46 @@ class TripContextSettings:
             token=token,
             timeout_seconds=timeout_seconds,
         )
+
+
+@dataclass(frozen=True)
+class ArrivalQualityPolicy:
+    """Maximum source age, skew and inaccuracy accepted for live arrivals."""
+
+    max_observation_age_seconds: float = 30
+    max_future_skew_seconds: float = 5
+    max_accuracy_meters: float = 100
+    max_effective_speed_age_seconds: float = 30
+
+    @classmethod
+    def from_environment(cls) -> Self:
+        defaults = cls()
+        return cls(
+            max_observation_age_seconds=_quality_limit(
+                "ETA_MAX_OBSERVATION_AGE_SECONDS", defaults.max_observation_age_seconds
+            ),
+            max_future_skew_seconds=_quality_limit(
+                "ETA_MAX_FUTURE_SKEW_SECONDS", defaults.max_future_skew_seconds
+            ),
+            max_accuracy_meters=_quality_limit(
+                "ETA_MAX_ACCURACY_METERS", defaults.max_accuracy_meters
+            ),
+            max_effective_speed_age_seconds=_quality_limit(
+                "ETA_MAX_EFFECTIVE_SPEED_AGE_SECONDS", defaults.max_effective_speed_age_seconds
+            ),
+        )
+
+
+def _quality_limit(name: str, default: float) -> float:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+
+    message = f"{name} must be a finite, nonnegative number."
+    try:
+        limit = float(raw)
+    except ValueError as error:
+        raise ValueError(message) from error
+    if not isfinite(limit) or limit < 0:
+        raise ValueError(message)
+    return limit
