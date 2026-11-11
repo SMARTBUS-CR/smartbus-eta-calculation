@@ -413,6 +413,7 @@ class HttpTripContextProviderTests(unittest.TestCase):
         )
         settings = TripContextSettings(
             base_url="https://dashboard.test",
+            token="test-service-token",
         )
 
         with self.assertRaisesRegex(RuntimeError, "Calculation failed"):

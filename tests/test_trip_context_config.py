@@ -74,3 +74,10 @@ class TripContextSettingsTests(unittest.TestCase):
                 with patch.dict(os.environ, environment, clear=True):
                     with self.assertRaises(ValueError):
                         TripContextSettings.from_environment()
+
+    def test_requires_a_service_token_from_environment(self):
+        environment = {"TRIP_CONTEXT_BASE_URL": "https://dashboard.test"}
+
+        with patch.dict(os.environ, environment, clear=True):
+            with self.assertRaisesRegex(ValueError, "TRIP_CONTEXT_TOKEN"):
+                TripContextSettings.from_environment()
