@@ -1,16 +1,13 @@
 """Internal API for correlated batch arrival estimates."""
 
 from datetime import datetime, timezone
-from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Body, Depends
+from fastapi import APIRouter, Depends
 
 from app.api.arrivals_dependencies import authenticate_eta_service, load_arrivals_settings
 from app.api.arrivals_errors import ArrivalErrors, ArrivalsApiError, JsonApiResponse, json_pointer
 from app.schemas.batch_arrivals_schema import (
-    ARRIVALS_REQUEST_EXAMPLE,
-    ARRIVALS_RESPONSE_EXAMPLE,
     BatchArrivalsData,
     BatchArrivalsRequest,
     BatchArrivalsResponse,
@@ -51,17 +48,11 @@ ERROR_RESPONSES[401]["headers"] = {
     response_class=JsonApiResponse,
     dependencies=[Depends(authenticate_eta_service)],
     summary="Calculate ordered arrival estimates for a Trip",
-    responses={
-        200: {"content": {JsonApiResponse.media_type: {"example": ARRIVALS_RESPONSE_EXAMPLE}}},
-        **ERROR_RESPONSES,
-    },
+    responses=ERROR_RESPONSES,
 )
 def trip_arrivals(
     trip_id: UUID,
-    payload: Annotated[
-        BatchArrivalsRequest,
-        Body(openapi_examples={"moving_bus": {"value": ARRIVALS_REQUEST_EXAMPLE}}),
-    ],
+    payload: BatchArrivalsRequest,
 ) -> BatchArrivalsResponse:
     """Resolve one operational plan and apply the arrival quality policy.
 

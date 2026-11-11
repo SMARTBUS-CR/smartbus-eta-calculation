@@ -11,6 +11,7 @@ from uuid import UUID
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.schemas.batch_arrivals_schema import BatchArrivalsRequest, BatchArrivalsResponse
 from app.schemas.trip_context_schema import TripContext
 from app.services.trip_context_provider import (
     TripContextInvalidResponse,
@@ -294,3 +295,11 @@ class BatchArrivalsApiTests(unittest.TestCase):
         legacy = spec["paths"]["/api/v1/eta/calculate"]["post"]
         self.assertNotIn("security", legacy)
         self.assertIn("application/json", legacy["responses"]["200"]["content"])
+
+    def test_openapi_examples_preserve_required_nullable_fields(self):
+        spec = self.client.get("/openapi.json").json()
+        operation = spec["paths"]["/api/v1/eta/trips/{trip_id}/arrivals"]["post"]
+        request = operation["requestBody"]["content"]["application/json"]
+        responses = operation["responses"]
+        BatchArrivalsRequest.model_validate(request["examples"]["moving_bus"]["value"])
+        BatchArrivalsResponse.model_validate(responses["200"]["content"][JSON_API]["example"])
