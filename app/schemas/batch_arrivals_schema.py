@@ -26,7 +26,10 @@ def parse_instant(value: object) -> datetime:
 
 
 def to_utc(value: datetime) -> datetime:
-    return value.astimezone(timezone.utc)
+    try:
+        return value.astimezone(timezone.utc)
+    except OverflowError as error:
+        raise ValueError("The timestamp is outside the supported UTC range.") from error
 
 
 UtcInstant = Annotated[AwareDatetime, BeforeValidator(parse_instant), AfterValidator(to_utc)]
@@ -117,3 +120,67 @@ class BatchArrivalsAttributes(BaseModel):
     calculated_at: UtcInstant
     source_age_seconds: float = Field(ge=0, allow_inf_nan=False)
     arrivals: list[ArrivalEstimate]
+
+
+class BatchArrivalsData(BaseModel):
+    type: Literal["trip-arrival-estimates"]
+    id: UUID
+    attributes: BatchArrivalsAttributes
+
+
+class BatchArrivalsResponse(BaseModel):
+    data: BatchArrivalsData
+
+
+_EXAMPLE_TRIP = "11111111-1111-4111-8111-111111111111"
+_EXAMPLE_OCCURRENCE = "44444444-4444-4444-8444-444444444442"
+_EXAMPLE_REVISION = "a" * 64
+
+ARRIVALS_REQUEST_EXAMPLE = {
+    "contract_version": 1,
+    "route_revision": _EXAMPLE_REVISION,
+    "position_version": 12,
+    "observed_at": "2026-10-21T15:05:00Z",
+    "tracking": {
+        "on_route": True,
+        "accuracy_meters": 12.0,
+        "current_speed_kmh": 36.0,
+        "effective_speed_kmh": None,
+        "effective_speed_observed_at": None,
+        "distance_along_route_m": 1212.16,
+        "confirmed_stop_occurrence_id": None,
+    },
+    "targets": [
+        {"stop_occurrence_id": _EXAMPLE_OCCURRENCE, "remaining_distance_m": 1000.0}
+    ],
+}
+
+ARRIVALS_RESPONSE_EXAMPLE = {
+    "data": {
+        "type": "trip-arrival-estimates",
+        "id": _EXAMPLE_TRIP,
+        "attributes": {
+            "contract_version": 1,
+            "trip_id": _EXAMPLE_TRIP,
+            "route_revision": _EXAMPLE_REVISION,
+            "position_version": 12,
+            "observed_at": "2026-10-21T15:05:00Z",
+            "calculated_at": "2026-10-21T15:05:00Z",
+            "source_age_seconds": 0.0,
+            "arrivals": [
+                {
+                    "stop_occurrence_id": _EXAMPLE_OCCURRENCE,
+                    "stop_id": "55555555-5555-4555-8555-555555555552",
+                    "stop_sequence": 2,
+                    "remaining_distance_m": 1000.0,
+                    "eta_seconds": 100,
+                    "arrival_at": "2026-10-21T15:06:40Z",
+                    "planned_arrival_at": "2026-10-21T15:30:00Z",
+                    "method": "distance_speed",
+                    "quality_reason": "current_speed",
+                    "model_version": None,
+                }
+            ],
+        },
+    },
+}

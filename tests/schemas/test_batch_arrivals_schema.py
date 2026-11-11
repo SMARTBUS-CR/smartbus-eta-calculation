@@ -36,6 +36,8 @@ class BatchArrivalsSchemaTests(unittest.TestCase):
             (("observed_at",), 1792595100),
             (("observed_at",), "1792595100"),
             (("observed_at",), "2026-10-21T15:05:00"),
+            (("observed_at",), "0001-01-01T00:00:00+01:00"),
+            (("observed_at",), "9999-12-31T23:59:59-01:00"),
             (("tracking", "on_route"), 1),
             (("tracking", "accuracy_meters"), float("inf")),
             (("tracking", "current_speed_kmh"), -1),
