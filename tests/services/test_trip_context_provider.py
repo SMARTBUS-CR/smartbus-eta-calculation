@@ -186,6 +186,21 @@ class HttpTripContextProviderTests(unittest.TestCase):
 
                 self.assertEqual(len(requests), 1)
 
+    def test_wraps_a_malformed_upstream_http_response(self):
+        trip_id = UUID("11111111-1111-4111-8111-111111111111")
+
+        def handle_request(request: httpx2.Request) -> httpx2.Response:
+            raise httpx2.RemoteProtocolError("Malformed upstream HTTP.", request=request)
+
+        with httpx2.Client(
+            base_url="https://dashboard.test",
+            transport=httpx2.MockTransport(handle_request),
+        ) as client:
+            provider = HttpTripContextProvider(client=client)
+
+            with self.assertRaises(TripContextInvalidResponse):
+                provider.get_context(trip_id)
+
     def test_rejects_context_with_a_different_route_revision(self):
         payload = make_trip_context_payload()
         trip_id = UUID(payload["trip_id"])

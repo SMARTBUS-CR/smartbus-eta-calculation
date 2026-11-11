@@ -83,6 +83,10 @@ class HttpTripContextProvider:
                 timeout=self._timeout_seconds,
                 follow_redirects=False,
             )
+        except httpx2.RemoteProtocolError as exception:
+            raise TripContextInvalidResponse(
+                "The provider returned an invalid HTTP response."
+            ) from exception
         except (httpx2.TimeoutException, httpx2.NetworkError) as exception:
             raise TripContextUnavailable(
                 "The Trip context provider is temporarily unavailable."
