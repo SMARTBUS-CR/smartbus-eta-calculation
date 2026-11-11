@@ -1,4 +1,4 @@
-"""Request contract for the versioned arrival estimates API."""
+"""Request and response contracts for the versioned arrival estimates API."""
 
 from datetime import datetime, timezone
 from typing import Annotated, Literal
@@ -81,3 +81,39 @@ class BatchArrivalsRequest(BaseModel):
         if type(value) is not int:
             raise ValueError("Contract version must be an integer.")
         return value
+
+
+ArrivalQualityReason = Literal[
+    "current_speed",
+    "trip_not_started",
+    "stale_observation",
+    "off_route",
+    "poor_accuracy",
+    "no_usable_speed",
+    "arrival_unconfirmed",
+    "calculation_unavailable",
+]
+
+
+class ArrivalEstimate(BaseModel):
+    stop_occurrence_id: UUID
+    stop_id: UUID
+    stop_sequence: int = Field(gt=0)
+    remaining_distance_m: Meters
+    eta_seconds: Annotated[int, Field(ge=0)] | None
+    arrival_at: UtcInstant | None
+    planned_arrival_at: UtcInstant | None
+    method: Literal["distance_speed", "scheduled_reference", "unavailable"]
+    quality_reason: ArrivalQualityReason
+    model_version: str | None
+
+
+class BatchArrivalsAttributes(BaseModel):
+    contract_version: Literal[1]
+    trip_id: UUID
+    route_revision: RouteRevision
+    position_version: int = Field(gt=0)
+    observed_at: UtcInstant
+    calculated_at: UtcInstant
+    source_age_seconds: float = Field(ge=0, allow_inf_nan=False)
+    arrivals: list[ArrivalEstimate]
