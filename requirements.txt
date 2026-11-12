@@ -2,6 +2,7 @@
 numpy==2.5.3
 scikit-learn==1.9.1
 joblib==1.6.0
+tzdata==2026.5
 # Transitive dependencies pinned for reproducible model loading.
 scipy==1.18.1
 narwhals==2.26.0
