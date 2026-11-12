@@ -4,6 +4,9 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic_i18n import PydanticI18n, DictLoader
 
+from app.api.arrivals_errors import ArrivalsApiError, validation_response
+from app.api.v1.arrivals import router as arrivals_router, trip_arrivals
+
 from app.api.v1.eta import router as eta_router
 from app.services.eta_service import EtaCalculationError
 from app.i18n import __, get_locale, _translations
@@ -17,9 +20,17 @@ validation_translator = PydanticI18n(translation_loader)
 
 app = FastAPI(title="Smartbus ETA Calculation API")
 app.include_router(eta_router, prefix="/api/v1/eta", tags=["ETA"])
+app.include_router(arrivals_router, prefix="/api/v1/eta", tags=["ETA"])
+
+@app.exception_handler(ArrivalsApiError)
+async def arrivals_exception_handler(request: Request, exc: ArrivalsApiError):
+    return exc.response(request)
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    if request.scope.get("endpoint") is trip_arrivals:
+        return validation_response(request, exc)
+
     lang_code = get_locale(request)
     pydantic_locale = "es_ES" if lang_code == "es" else "en_US"
     
@@ -53,6 +64,9 @@ async def eta_calculation_error_handler(request: Request, exc: EtaCalculationErr
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
+    if request.scope.get("endpoint") is trip_arrivals:
+        return ArrivalsApiError(500, "internal_error", detail="errors.unexpected").response(request)
+
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={

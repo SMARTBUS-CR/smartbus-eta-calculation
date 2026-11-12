@@ -114,14 +114,11 @@ Expected behavior:
   $env:OMP_NUM_THREADS = '1'
   .\.venv\Scripts\python.exe -m unittest discover -s tests -t . -p 'test_*.py' -v
 
-Expected result:
-
-  Ran 32 tests in ...
-  OK
+Discovery includes the API, schema, and service suites.
 
 9. RUN ONLY API TESTS
 
-  .\.venv\Scripts\python.exe -m unittest tests.test_eta_api -v
+  .\.venv\Scripts\python.exe -m unittest tests.test_eta_api tests.test_batch_arrivals_api -v
 
 10. RUN ONLY SERVICE TESTS
 
@@ -137,4 +134,18 @@ Expected result:
 - The ML model accepts distances from 0 to 20,000 meters.
 - The ML model accepts speeds from 5 to 100 km/h.
 - Values outside that range use the deterministic fallback when possible.
-- A speed less than or equal to zero is rejected by the API.
+- The single-stop endpoint rejects a speed less than or equal to zero.
+
+
+13. TEST THE INTERNAL BATCH ENDPOINT
+
+- Start Dashboard with the eta-v1 tracking-context projection enabled.
+- Set TRIP_CONTEXT_BASE_URL to the Dashboard service URL and configure the same
+  TRIP_CONTEXT_TOKEN in Dashboard and ETA.
+- Set ETA_SERVICE_KEY in ETA and use it as the caller's Bearer credential.
+- Send POST /api/v1/eta/trips/{trip_id}/arrivals with Content-Type: application/json.
+  Use the moving_bus example in /docs, substituting the saved trip revision,
+  occurrence IDs, route progress and a fresh UTC observed_at.
+- A usable moving observation returns ordered JSON:API arrivals with separate
+  live and planned times. Effective-speed and confirmed-arrival estimates are
+  covered by the follow-up quality policy in issue #19.
