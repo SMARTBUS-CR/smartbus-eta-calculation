@@ -164,3 +164,30 @@ Batch quality limits are inclusive and configurable in the environment:
 
 Values must be finite and nonnegative. Invalid configuration returns
 503 eta_not_ready. Observations past the allowed future skew return 422.
+
+
+14. VERIFY SERVICE HEALTH AND TRACKING INTEGRATION
+
+- GET /health/live is public and returns {"status":"alive"}.
+- GET /health/ready uses Authorization: Bearer <ETA_SERVICE_KEY>. Valid local
+  settings return {"status":"ready","calculation":"available","ml":"disabled"}.
+  Readiness checks local configuration. Use a batch request to verify the
+  connection to Dashboard.
+- Start both services with the credentials from section 13. Use a saved
+  Dashboard trip and the moving_bus request example in /docs. Verify the
+  returned occurrence order and the separate planned and live arrival fields.
+  A scheduled trip returns planned references or unavailable results.
+
+GPS owns the active trip and the latest accepted position version:
+
+1. Send the plan revision and position version from the accepted observation.
+2. After ETA responds, compare data.attributes.trip_id, route_revision and
+   position_version with the active values before applying the arrivals.
+3. If GPS has accepted position version 22 and the response echoes version 21,
+   discard it even if that response arrives last. observed_at is echoed in UTC
+   and can be used to trace the original observation.
+
+On 409 route_revision_mismatch, refresh the plan before submitting progress
+against the new revision. 502 trip_context_invalid_response and 503
+trip_context_unavailable are dependency failures with no partial arrivals.
+OpenAPI includes JSON:API examples and stable error codes for the consumer.

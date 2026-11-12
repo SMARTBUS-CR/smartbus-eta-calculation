@@ -1,19 +1,19 @@
 """Internal API for correlated batch arrival estimates."""
 
-import os
 from datetime import datetime, timezone
-from secrets import compare_digest
-from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Body, Depends, Security
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi import APIRouter, Depends
 
-from app.api.arrivals_errors import ArrivalErrors, ArrivalsApiError, JsonApiResponse, json_pointer
-from app.config import ArrivalQualityPolicy, TripContextSettings
+from app.api.arrivals_dependencies import authenticate_eta_service, load_arrivals_settings
+from app.api.arrivals_errors import (
+    ArrivalErrors,
+    ArrivalsApiError,
+    JsonApiResponse,
+    arrival_error_example,
+    json_pointer,
+)
 from app.schemas.batch_arrivals_schema import (
-    ARRIVALS_REQUEST_EXAMPLE,
-    ARRIVALS_RESPONSE_EXAMPLE,
     BatchArrivalsData,
     BatchArrivalsRequest,
     BatchArrivalsResponse,
@@ -29,33 +29,32 @@ from app.services.trip_context_provider import (
 
 
 router = APIRouter()
-service_bearer = HTTPBearer(
-    auto_error=False,
-    scheme_name="EtaServiceBearer",
-    description="Service credential configured as ETA_SERVICE_KEY.",
-)
-
-
-def authenticate_arrivals(
-    credentials: Annotated[HTTPAuthorizationCredentials | None, Security(service_bearer)],
-) -> None:
-    key = os.environ.get("ETA_SERVICE_KEY")
-    if key is None or not key.strip():
-        raise ArrivalsApiError(503, "eta_not_ready")
-    if credentials is None or not compare_digest(credentials.credentials.encode(), key.encode()):
-        raise ArrivalsApiError(401, "unauthorized_service")
 
 
 ERROR_RESPONSES = {
-    code: {"model": ArrivalErrors, "description": description}
-    for code, description in {
-        401: "Missing or invalid ETA service credential.",
-        404: "Trip context not found.",
-        409: "Trip is not estimable or its route revision has changed.",
-        422: "Invalid request or tracking progress.",
-        500: "Unexpected server failure.",
-        502: "Dashboard returned an invalid response.",
-        503: "ETA is not configured or Dashboard is unavailable.",
+    status: {
+        "model": ArrivalErrors,
+        "description": description,
+        "content": {
+            JsonApiResponse.media_type: {
+                "examples": {code: {"value": arrival_error_example(status, code)} for code in codes},
+            }
+        },
+    }
+    for status, (description, codes) in {
+        401: ("Missing or invalid ETA service credential.", ("unauthorized_service",)),
+        404: ("Trip context not found.", ("trip_context_not_found",)),
+        409: (
+            "Trip is not estimable or its route revision has changed.",
+            ("route_revision_mismatch", "trip_not_estimable"),
+        ),
+        422: ("Invalid request or tracking progress.", ("invalid_input",)),
+        500: ("Unexpected server failure.", ("internal_error",)),
+        502: ("Dashboard returned an invalid response.", ("trip_context_invalid_response",)),
+        503: (
+            "ETA is not configured or Dashboard is unavailable.",
+            ("eta_not_ready", "trip_context_unavailable"),
+        ),
     }.items()
 }
 ERROR_RESPONSES[401]["headers"] = {
@@ -67,19 +66,13 @@ ERROR_RESPONSES[401]["headers"] = {
     "/trips/{trip_id}/arrivals",
     response_model=BatchArrivalsResponse,
     response_class=JsonApiResponse,
-    dependencies=[Depends(authenticate_arrivals)],
+    dependencies=[Depends(authenticate_eta_service)],
     summary="Calculate ordered arrival estimates for a Trip",
-    responses={
-        200: {"content": {JsonApiResponse.media_type: {"example": ARRIVALS_RESPONSE_EXAMPLE}}},
-        **ERROR_RESPONSES,
-    },
+    responses=ERROR_RESPONSES,
 )
 def trip_arrivals(
     trip_id: UUID,
-    payload: Annotated[
-        BatchArrivalsRequest,
-        Body(openapi_examples={"moving_bus": {"value": ARRIVALS_REQUEST_EXAMPLE}}),
-    ],
+    payload: BatchArrivalsRequest,
 ) -> BatchArrivalsResponse:
     """Resolve one operational plan and apply the arrival quality policy.
 
@@ -87,11 +80,7 @@ def trip_arrivals(
     or recent effective speed. Degraded observations return a planned reference
     when available, with null live fields.
     """
-    try:
-        settings = TripContextSettings.from_environment()
-        quality_policy = ArrivalQualityPolicy.from_environment()
-    except ValueError as error:
-        raise ArrivalsApiError(503, "eta_not_ready") from error
+    settings, quality_policy = load_arrivals_settings()
 
     try:
         with open_trip_context_provider(settings) as provider:

@@ -10,7 +10,9 @@ from uuid import UUID
 
 from fastapi.testclient import TestClient
 
+from app.api.arrivals_errors import ArrivalErrors
 from app.main import app
+from app.schemas.batch_arrivals_schema import BatchArrivalsRequest, BatchArrivalsResponse
 from app.schemas.trip_context_schema import TripContext
 from app.services.trip_context_provider import (
     TripContextInvalidResponse,
@@ -294,3 +296,37 @@ class BatchArrivalsApiTests(unittest.TestCase):
         legacy = spec["paths"]["/api/v1/eta/calculate"]["post"]
         self.assertNotIn("security", legacy)
         self.assertIn("application/json", legacy["responses"]["200"]["content"])
+
+    def test_openapi_examples_preserve_required_nullable_fields(self):
+        spec = self.client.get("/openapi.json").json()
+        operation = spec["paths"]["/api/v1/eta/trips/{trip_id}/arrivals"]["post"]
+        request = operation["requestBody"]["content"]["application/json"]
+        responses = operation["responses"]
+        BatchArrivalsRequest.model_validate(request["examples"]["moving_bus"]["value"])
+        BatchArrivalsResponse.model_validate(responses["200"]["content"][JSON_API]["example"])
+
+    def test_openapi_documents_consumer_error_codes_and_field_pointers(self):
+        spec = self.client.get("/openapi.json").json()
+        responses = spec["paths"]["/api/v1/eta/trips/{trip_id}/arrivals"]["post"]["responses"]
+        expected_codes = {
+            "401": {"unauthorized_service"},
+            "404": {"trip_context_not_found"},
+            "409": {"route_revision_mismatch", "trip_not_estimable"},
+            "422": {"invalid_input"},
+            "500": {"internal_error"},
+            "502": {"trip_context_invalid_response"},
+            "503": {"eta_not_ready", "trip_context_unavailable"},
+        }
+        for status, codes in expected_codes.items():
+            with self.subTest(status=status):
+                examples = responses[status]["content"][JSON_API]["examples"]
+                self.assertEqual(set(examples), codes)
+                for code, example in examples.items():
+                    (error,) = ArrivalErrors.model_validate(example["value"]).errors
+                    self.assertEqual(error.status, status)
+                    self.assertEqual(error.code, code)
+                    self.assertTrue(error.title)
+                    self.assertTrue(error.detail)
+
+        invalid = responses["422"]["content"][JSON_API]["examples"]["invalid_input"]["value"]
+        self.assertEqual(invalid["errors"][0]["source"]["pointer"], "/targets/0/remaining_distance_m")

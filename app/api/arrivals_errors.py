@@ -5,7 +5,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from app.i18n import __
+from app.i18n import _translations, get_locale
 
 
 class JsonApiResponse(JSONResponse):
@@ -67,7 +67,7 @@ class ArrivalsApiError(Exception):
 
     def response(self, request: Request) -> JsonApiResponse:
         source = ErrorSource(pointer=self.pointer) if self.pointer is not None else None
-        error = _error(request, self.status, self.code, self.detail, source)
+        error = _error(self.status, self.code, self.detail, source, locale=get_locale(request))
         headers = {"WWW-Authenticate": "Bearer"} if self.status == 401 else None
         return JsonApiResponse(
             status_code=self.status,
@@ -78,6 +78,7 @@ class ArrivalsApiError(Exception):
 
 def validation_response(request: Request, exception: RequestValidationError) -> JsonApiResponse:
     errors = []
+    locale = get_locale(request)
     for error in exception.errors():
         location = error["loc"]
         if location[:1] == ("path",):
@@ -87,20 +88,35 @@ def validation_response(request: Request, exception: RequestValidationError) -> 
         else:
             source = ErrorSource(pointer=json_pointer(location[1:]))
         detail = _VALIDATION_KEYS.get(error["type"], "errors.arrivals.invalid_field")
-        errors.append(_error(request, 422, "invalid_input", detail, source))
+        errors.append(_error(422, "invalid_input", detail, source, locale=locale))
 
     return JsonApiResponse(
         status_code=422, content=ArrivalErrors(errors=errors).model_dump(exclude_none=True)
     )
 
 
+def arrival_error_example(status: int, code: str) -> dict[str, object]:
+    """Build an English OpenAPI example using the runtime error contract."""
+    detail = {
+        "invalid_input": "errors.arrivals.invalid_field",
+        "internal_error": "errors.unexpected",
+    }.get(code, f"errors.arrivals.{code}")
+    source = (
+        ErrorSource(pointer="/targets/0/remaining_distance_m") if code == "invalid_input" else None
+    )
+    error = _error(status, code, detail, source, locale="en")
+    return ArrivalErrors(errors=[error]).model_dump(exclude_none=True)
+
+
 def _error(
-    request: Request, status: int, code: str, detail: str, source: ErrorSource | None
+    status: int, code: str, detail: str, source: ErrorSource | None, *, locale: str
 ) -> ArrivalError:
+    translations = _translations.get(locale, {})
+    title = _TITLE_KEYS[status]
     return ArrivalError(
         status=str(status),
         code=code,
-        title=__(_TITLE_KEYS[status], request),
-        detail=__(detail, request),
+        title=translations.get(title, title),
+        detail=translations.get(detail, detail),
         source=source,
     )
