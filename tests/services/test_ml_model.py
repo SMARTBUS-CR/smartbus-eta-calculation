@@ -1,9 +1,9 @@
 """Tests for real model persistence, predictions, and failure handling."""
 
+import unittest
 from pathlib import Path
 from shutil import copy2
 from tempfile import TemporaryDirectory
-import unittest
 
 import joblib
 import numpy as np

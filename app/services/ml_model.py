@@ -6,7 +6,6 @@ from pathlib import Path
 import joblib
 import numpy as np
 
-
 MODEL_PATH = Path(__file__).resolve().parents[1] / "models/eta_model.joblib"
 
 
@@ -25,9 +24,7 @@ class EtaModel:
         except Exception as exc:
             self._load_error = exc
 
-    def predict_eta(
-        self, remaining_distance_m: float, current_speed_kmh: float
-    ) -> float:
+    def predict_eta(self, remaining_distance_m: float, current_speed_kmh: float) -> float:
         """Return seconds or signal an internal failure to the future orchestrator."""
         if self._load_error is not None:
             raise ModelPredictionError("ETA model could not be loaded") from self._load_error

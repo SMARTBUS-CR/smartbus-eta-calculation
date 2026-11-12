@@ -1,8 +1,8 @@
 """Integration tests for ETA orchestration without mocked services."""
 
+import unittest
 from datetime import datetime
 from time import perf_counter
-import unittest
 
 from app.services.eta_service import (
     FALLBACK_CONFIDENCE,

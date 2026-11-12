@@ -5,7 +5,6 @@ from pathlib import Path
 
 from fastapi import Request
 
-
 LOCALES_DIR = Path(__file__).parent / "api" / "locales"
 _translations: dict[str, dict[str, str]] = {}
 

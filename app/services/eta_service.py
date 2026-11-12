@@ -6,7 +6,6 @@ from math import isfinite
 from app.services.fallback import calculate_fallback_eta
 from app.services.ml_model import predict_eta
 
-
 ML_CONFIDENCE = 0.82
 FALLBACK_CONFIDENCE = 0.50
 
@@ -31,9 +30,7 @@ def _normalize_eta_seconds(value: float) -> int:
 
 def _utc_timestamp() -> str:
     """Return the current UTC time in ISO 8601 format with a Z suffix."""
-    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace(
-        "+00:00", "Z"
-    )
+    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
 def calculate_eta(
@@ -53,9 +50,7 @@ def calculate_eta(
         raise EtaCalculationError("Current speed cannot be converted to m/s") from exc
 
     try:
-        eta_seconds = _normalize_eta_seconds(
-            predict_eta(remaining_distance_m, current_speed_kmh)
-        )
+        eta_seconds = _normalize_eta_seconds(predict_eta(remaining_distance_m, current_speed_kmh))
         confidence = ML_CONFIDENCE
     except Exception:
         try:

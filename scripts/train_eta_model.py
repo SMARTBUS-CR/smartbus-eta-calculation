@@ -8,7 +8,6 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_absolute_error, r2_score
 from sklearn.model_selection import train_test_split
 
-
 MODEL_PATH = Path(__file__).resolve().parents[1] / "app/models/eta_model.joblib"
 RANDOM_STATE = 42
 

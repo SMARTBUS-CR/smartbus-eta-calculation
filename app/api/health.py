@@ -8,7 +8,6 @@ from pydantic import BaseModel
 from app.api.arrivals_dependencies import authenticate_eta_service, load_arrivals_settings
 from app.api.arrivals_errors import ArrivalErrors, JsonApiResponse
 
-
 router = APIRouter(prefix="/health", tags=["Health"])
 
 

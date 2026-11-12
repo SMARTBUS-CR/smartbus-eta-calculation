@@ -8,7 +8,6 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 
-
 SETTINGS = {
     "ETA_SERVICE_KEY": "test-eta-service-key",
     "TRIP_CONTEXT_BASE_URL": "https://dashboard.test",
@@ -65,8 +64,9 @@ class HealthApiTests(unittest.TestCase):
             {"TRIP_CONTEXT_TIMEOUT_SECONDS": "0"},
             {"ETA_MAX_ACCURACY_METERS": "-1"},
         ):
-            with self.subTest(override=override), patch.dict(
-                os.environ, {**SETTINGS, **override}, clear=True
+            with (
+                self.subTest(override=override),
+                patch.dict(os.environ, {**SETTINGS, **override}, clear=True),
             ):
                 response = self.client.get(
                     "/health/ready",

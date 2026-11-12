@@ -2,13 +2,13 @@
 
 from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Protocol
-from uuid import UUID
-from pydantic import ValidationError
 from json import JSONDecodeError
 from math import isfinite
+from typing import Protocol
+from uuid import UUID
 
 import httpx2
+from pydantic import ValidationError
 
 from app.config import TripContextSettings
 from app.schemas.trip_context_schema import TripContext
@@ -17,11 +17,14 @@ from app.schemas.trip_context_schema import TripContext
 class TripContextInvalidResponse(RuntimeError):
     """The provider returned an invalid operational Trip context."""
 
+
 class TripContextNotFound(RuntimeError):
     """The requested Trip context does not exist."""
 
+
 class TripContextRevisionMismatch(RuntimeError):
     """The retrieved plan differs from the requested revision."""
+
 
 class TripContextUnavailable(RuntimeError):
     """The operational Trip context provider cannot be reached."""
@@ -35,8 +38,8 @@ class TripContextProvider(Protocol):
         trip_id: UUID,
         *,
         expected_revision: str | None = None,
-    ) -> TripContext:
-        ...
+    ) -> TripContext: ...
+
 
 class HttpTripContextProvider:
     """Retrieve Trip context from the operational Dashboard API."""
@@ -49,14 +52,10 @@ class HttpTripContextProvider:
         token: str | None = None,
     ) -> None:
         if not isfinite(timeout_seconds) or timeout_seconds <= 0:
-            raise ValueError(
-                "Trip context timeout must be positive and finite."
-            )
+            raise ValueError("Trip context timeout must be positive and finite.")
 
         if token is not None and not token.strip():
-            raise ValueError(
-                "Trip context service token must not be blank."
-            )
+            raise ValueError("Trip context service token must not be blank.")
 
         self._client = client
         self._timeout_seconds = timeout_seconds
@@ -93,9 +92,7 @@ class HttpTripContextProvider:
             ) from exception
 
         if response.status_code == 404:
-            raise TripContextNotFound(
-                "The requested Trip context was not found."
-            )
+            raise TripContextNotFound("The requested Trip context was not found.")
 
         try:
             response.raise_for_status()
@@ -112,19 +109,15 @@ class HttpTripContextProvider:
             ) from exception
 
         if context.trip_id != trip_id:
-            raise TripContextInvalidResponse(
-                "Trip context does not match the requested Trip."
-            )
+            raise TripContextInvalidResponse("Trip context does not match the requested Trip.")
 
-        if (
-            expected_revision is not None
-            and context.route_revision != expected_revision
-        ):
+        if expected_revision is not None and context.route_revision != expected_revision:
             raise TripContextRevisionMismatch(
                 "Trip context does not match the requested route revision."
             )
 
         return context
+
 
 @contextmanager
 def open_trip_context_provider(

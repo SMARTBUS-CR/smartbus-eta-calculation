@@ -26,7 +26,6 @@ from tests.support.arrivals import (
     make_confirmed_arrival_payload,
 )
 
-
 JSON_API = "application/vnd.api+json"
 TRIP_ID = UUID("11111111-1111-4111-8111-111111111111")
 URL = f"/api/v1/eta/trips/{TRIP_ID}/arrivals"
@@ -102,9 +101,7 @@ class BatchArrivalsApiTests(unittest.TestCase):
         self.assertEqual(attributes["position_version"], payload["position_version"])
         self.assertEqual(attributes["observed_at"], payload["observed_at"])
         self.assertEqual(attributes["calculated_at"], "2026-10-21T15:05:00Z")
-        self.assertEqual(
-            [item["eta_seconds"] for item in attributes["arrivals"]], [100, 250]
-        )
+        self.assertEqual([item["eta_seconds"] for item in attributes["arrivals"]], [100, 250])
         provider.get_context.assert_called_once_with(
             TRIP_ID, expected_revision=payload["route_revision"]
         )
@@ -130,7 +127,9 @@ class BatchArrivalsApiTests(unittest.TestCase):
                 patch.dict(os.environ, {setting: ""}),
                 self.dashboard() as (factory, _),
             ):
-                response = self.client.post(URL, json=make_arrivals_payload(), headers=AUTHORIZATION)
+                response = self.client.post(
+                    URL, json=make_arrivals_payload(), headers=AUTHORIZATION
+                )
                 self.assert_json_api_error(response, 503, "eta_not_ready")
                 factory.assert_not_called()
 
@@ -176,7 +175,9 @@ class BatchArrivalsApiTests(unittest.TestCase):
         for error_type, status, code in cases:
             with self.subTest(error_type=error_type), self.dashboard() as (_, provider):
                 provider.get_context.side_effect = error_type("private upstream details")
-                response = self.client.post(URL, json=make_arrivals_payload(), headers=AUTHORIZATION)
+                response = self.client.post(
+                    URL, json=make_arrivals_payload(), headers=AUTHORIZATION
+                )
                 self.assert_json_api_error(response, status, code)
                 self.assertNotIn("private upstream details", response.text)
 
@@ -278,7 +279,9 @@ class BatchArrivalsApiTests(unittest.TestCase):
         spec = self.client.get("/openapi.json").json()
         operation = spec["paths"]["/api/v1/eta/trips/{trip_id}/arrivals"]["post"]
         self.assertEqual(operation["security"], [{"EtaServiceBearer": []}])
-        self.assertEqual(spec["components"]["securitySchemes"]["EtaServiceBearer"]["scheme"], "bearer")
+        self.assertEqual(
+            spec["components"]["securitySchemes"]["EtaServiceBearer"]["scheme"], "bearer"
+        )
         request = operation["requestBody"]["content"]["application/json"]
         self.assertIn("moving_bus", request["examples"])
         self.assertIn("BatchArrivalsRequest", request["schema"]["$ref"])
@@ -329,4 +332,6 @@ class BatchArrivalsApiTests(unittest.TestCase):
                     self.assertTrue(error.detail)
 
         invalid = responses["422"]["content"][JSON_API]["examples"]["invalid_input"]["value"]
-        self.assertEqual(invalid["errors"][0]["source"]["pointer"], "/targets/0/remaining_distance_m")
+        self.assertEqual(
+            invalid["errors"][0]["source"]["pointer"], "/targets/0/remaining_distance_m"
+        )

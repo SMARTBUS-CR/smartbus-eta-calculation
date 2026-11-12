@@ -2,8 +2,9 @@
 
 from datetime import date, datetime, timezone
 from typing import Annotated, Any, Literal, Self
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from uuid import UUID
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
 from pydantic import (
     AwareDatetime,
     BaseModel,
@@ -33,6 +34,7 @@ Latitude = Annotated[
     ),
 ]
 
+
 def parse_planned_timestamp(value: Any) -> datetime:
     """Parse ISO 8601 text without accepting Unix timestamps."""
 
@@ -45,9 +47,8 @@ def parse_planned_timestamp(value: Any) -> datetime:
     try:
         return datetime.fromisoformat(value)
     except ValueError as exception:
-        raise ValueError(
-            "Planned timestamps must use ISO 8601 format."
-        ) from exception
+        raise ValueError("Planned timestamps must use ISO 8601 format.") from exception
+
 
 class RouteGeometry(BaseModel):
     """Road geometry preserved in the Trip plan."""
@@ -140,10 +141,7 @@ class TripContext(BaseModel):
     ) -> list[TripStopOccurrence]:
         """Reject repeated occurrence identities within a Trip."""
 
-        occurrence_ids = [
-            occurrence.occurrence_id
-            for occurrence in occurrences
-        ]
+        occurrence_ids = [occurrence.occurrence_id for occurrence in occurrences]
 
         if len(occurrence_ids) != len(set(occurrence_ids)):
             raise ValueError("Stop occurrence IDs must be unique.")
@@ -160,9 +158,7 @@ class TripContext(BaseModel):
 
         for previous, current in zip(occurrences, occurrences[1:]):
             if current.stop_sequence <= previous.stop_sequence:
-                raise ValueError(
-                    "Stop sequences must be strictly increasing."
-                )
+                raise ValueError("Stop sequences must be strictly increasing.")
 
         return occurrences
 
@@ -176,9 +172,7 @@ class TripContext(BaseModel):
 
         for previous, current in zip(occurrences, occurrences[1:]):
             if current.distance_along_route_m < previous.distance_along_route_m:
-                raise ValueError(
-                    "Stop occurrence distances must be non-decreasing."
-                )
+                raise ValueError("Stop occurrence distances must be non-decreasing.")
 
         return occurrences
 
@@ -225,9 +219,7 @@ class TripContext(BaseModel):
         try:
             ZoneInfo(value)
         except (ZoneInfoNotFoundError, ValueError) as exception:
-            raise ValueError(
-                "Company timezone must be a valid IANA identifier."
-            ) from exception
+            raise ValueError("Company timezone must be a valid IANA identifier.") from exception
 
         return value
 
@@ -237,9 +229,7 @@ class TripContext(BaseModel):
 
         for occurrence in self.stop_occurrences:
             if occurrence.distance_along_route_m > self.route_distance_m:
-                raise ValueError(
-                    "Stop occurrence distances must not exceed the route length."
-                )
+                raise ValueError("Stop occurrence distances must not exceed the route length.")
 
         return self
 
@@ -248,9 +238,7 @@ class TripContext(BaseModel):
         """Require planned arrival to follow planned departure."""
 
         if self.planned_arrival_at <= self.planned_departure_at:
-            raise ValueError(
-                "Planned arrival must be after planned departure."
-            )
+            raise ValueError("Planned arrival must be after planned departure.")
 
         return self
 
@@ -264,15 +252,8 @@ class TripContext(BaseModel):
             if arrival is None:
                 continue
 
-            if not (
-                self.planned_departure_at
-                <= arrival
-                <= self.planned_arrival_at
-            ):
-                raise ValueError(
-                    "Stop occurrence times must be within "
-                    "the planned Trip interval."
-                )
+            if not (self.planned_departure_at <= arrival <= self.planned_arrival_at):
+                raise ValueError("Stop occurrence times must be within the planned Trip interval.")
 
         return self
 
@@ -289,9 +270,7 @@ class TripContext(BaseModel):
                 continue
 
             if previous_arrival is not None and arrival < previous_arrival:
-                raise ValueError(
-                    "Stop occurrence times must be non-decreasing."
-                )
+                raise ValueError("Stop occurrence times must be non-decreasing.")
 
             previous_arrival = arrival
 

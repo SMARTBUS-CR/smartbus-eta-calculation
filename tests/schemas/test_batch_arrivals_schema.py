@@ -21,9 +21,7 @@ class BatchArrivalsSchemaTests(unittest.TestCase):
         parsed = BatchArrivalsRequest.model_validate(payload).model_dump(mode="json")
 
         self.assertEqual(parsed["observed_at"], "2026-10-21T15:05:00Z")
-        self.assertEqual(
-            parsed["tracking"]["effective_speed_observed_at"], "2026-10-21T15:04:55Z"
-        )
+        self.assertEqual(parsed["tracking"]["effective_speed_observed_at"], "2026-10-21T15:04:55Z")
         self.assertIsNone(parsed["tracking"]["current_speed_kmh"])
 
     def test_rejects_coercion_and_invalid_values_at_the_input_field(self):
@@ -65,9 +63,7 @@ class BatchArrivalsSchemaTests(unittest.TestCase):
 
         with self.assertRaises(ValidationError) as error:
             BatchArrivalsRequest.model_validate(payload)
-        self.assertEqual(
-            error.exception.errors()[0]["loc"], ("targets", 0, "planned_arrival_at")
-        )
+        self.assertEqual(error.exception.errors()[0]["loc"], ("targets", 0, "planned_arrival_at"))
 
     def test_requires_the_effective_speed_and_instant_to_be_present_together(self):
         for speed, observed_at in ((20, None), (None, "2026-10-21T15:04:55Z")):

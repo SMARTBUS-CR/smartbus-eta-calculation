@@ -10,7 +10,6 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from app.api.arrivals_errors import ArrivalsApiError
 from app.config import ArrivalQualityPolicy, TripContextSettings
 
-
 service_bearer = HTTPBearer(
     auto_error=False,
     scheme_name="EtaServiceBearer",

@@ -1,12 +1,14 @@
 """Tests for the operational Trip context contract."""
 
+import unittest
 from datetime import datetime, timezone
 from uuid import UUID
+
 from pydantic import ValidationError
-import unittest
 
 from app.schemas.trip_context_schema import TripContext
 from tests.support.trip_context import make_trip_context_payload
+
 
 class TripContextSchemaTests(unittest.TestCase):
     """Verify typed Trip plans and independent stop occurrences."""
@@ -44,18 +46,15 @@ class TripContextSchemaTests(unittest.TestCase):
 
     def test_rejects_duplicate_occurrence_ids(self):
         payload = make_trip_context_payload()
-        payload["stop_occurrences"][1]["occurrence_id"] = (
-            payload["stop_occurrences"][0]["occurrence_id"]
-        )
+        payload["stop_occurrences"][1]["occurrence_id"] = payload["stop_occurrences"][0][
+            "occurrence_id"
+        ]
 
         with self.assertRaises(ValidationError) as raised:
             TripContext.model_validate(payload)
 
         self.assertTrue(
-            any(
-                "stop_occurrences" in error["loc"]
-                for error in raised.exception.errors()
-            )
+            any("stop_occurrences" in error["loc"] for error in raised.exception.errors())
         )
 
     def test_rejects_non_increasing_stop_sequences(self):
@@ -73,28 +72,20 @@ class TripContextSchemaTests(unittest.TestCase):
                     TripContext.model_validate(payload)
 
                 self.assertTrue(
-                    any(
-                        "stop_occurrences" in error["loc"]
-                        for error in raised.exception.errors()
-                    )
+                    any("stop_occurrences" in error["loc"] for error in raised.exception.errors())
                 )
 
     def test_rejects_plans_with_fewer_than_two_stop_occurrences(self):
         for count in (0, 1):
             with self.subTest(count=count):
                 payload = make_trip_context_payload()
-                payload["stop_occurrences"] = (
-                    payload["stop_occurrences"][:count]
-                )
+                payload["stop_occurrences"] = payload["stop_occurrences"][:count]
 
                 with self.assertRaises(ValidationError) as raised:
                     TripContext.model_validate(payload)
 
                 self.assertTrue(
-                    any(
-                        "stop_occurrences" in error["loc"]
-                        for error in raised.exception.errors()
-                    )
+                    any("stop_occurrences" in error["loc"] for error in raised.exception.errors())
                 )
 
     def test_rejects_non_positive_stop_sequences(self):
@@ -108,8 +99,7 @@ class TripContextSchemaTests(unittest.TestCase):
 
                 self.assertTrue(
                     any(
-                        error["loc"]
-                        == ("stop_occurrences", 0, "stop_sequence")
+                        error["loc"] == ("stop_occurrences", 0, "stop_sequence")
                         for error in raised.exception.errors()
                     )
                 )
@@ -123,9 +113,7 @@ class TripContextSchemaTests(unittest.TestCase):
         ):
             with self.subTest(distance=distance):
                 payload = make_trip_context_payload()
-                payload["stop_occurrences"][0][
-                    "distance_along_route_m"
-                ] = distance
+                payload["stop_occurrences"][0]["distance_along_route_m"] = distance
 
                 with self.assertRaises(ValidationError) as raised:
                     TripContext.model_validate(payload)
@@ -151,10 +139,7 @@ class TripContextSchemaTests(unittest.TestCase):
             TripContext.model_validate(payload)
 
         self.assertTrue(
-            any(
-                "stop_occurrences" in error["loc"]
-                for error in raised.exception.errors()
-            )
+            any("stop_occurrences" in error["loc"] for error in raised.exception.errors())
         )
 
     def test_rejects_invalid_route_distances(self):
@@ -174,8 +159,7 @@ class TripContextSchemaTests(unittest.TestCase):
 
                 self.assertTrue(
                     any(
-                        error["loc"] == ("route_distance_m",)
-                        for error in raised.exception.errors()
+                        error["loc"] == ("route_distance_m",) for error in raised.exception.errors()
                     )
                 )
 
@@ -192,9 +176,9 @@ class TripContextSchemaTests(unittest.TestCase):
         for count in (0, 1):
             with self.subTest(count=count):
                 payload = make_trip_context_payload()
-                payload["route_geometry"]["coordinates"] = (
-                    payload["route_geometry"]["coordinates"][:count]
-                )
+                payload["route_geometry"]["coordinates"] = payload["route_geometry"]["coordinates"][
+                    :count
+                ]
 
                 with self.assertRaises(ValidationError) as raised:
                     TripContext.model_validate(payload)
@@ -227,8 +211,7 @@ class TripContextSchemaTests(unittest.TestCase):
 
                 self.assertTrue(
                     any(
-                        error["loc"]
-                        == ("route_geometry", "coordinates", 0, axis)
+                        error["loc"] == ("route_geometry", "coordinates", 0, axis)
                         for error in raised.exception.errors()
                     )
                 )
@@ -275,10 +258,7 @@ class TripContextSchemaTests(unittest.TestCase):
                     TripContext.model_validate(payload)
 
                 self.assertTrue(
-                    any(
-                        error["loc"] == ("route_revision",)
-                        for error in raised.exception.errors()
-                    )
+                    any(error["loc"] == ("route_revision",) for error in raised.exception.errors())
                 )
 
     def test_rejects_planned_timestamps_without_timezone(self):
@@ -294,26 +274,20 @@ class TripContextSchemaTests(unittest.TestCase):
                     TripContext.model_validate(payload)
 
                 self.assertTrue(
-                    any(
-                        error["loc"] == (field,)
-                        for error in raised.exception.errors()
-                    )
+                    any(error["loc"] == (field,) for error in raised.exception.errors())
                 )
 
     def test_rejects_occurrence_timestamp_without_timezone(self):
         payload = make_trip_context_payload()
         occurrence = payload["stop_occurrences"][0]
-        occurrence["planned_arrival_at"] = (
-            occurrence["planned_arrival_at"].removesuffix("Z")
-        )
+        occurrence["planned_arrival_at"] = occurrence["planned_arrival_at"].removesuffix("Z")
 
         with self.assertRaises(ValidationError) as raised:
             TripContext.model_validate(payload)
 
         self.assertTrue(
             any(
-                error["loc"]
-                == ("stop_occurrences", 0, "planned_arrival_at")
+                error["loc"] == ("stop_occurrences", 0, "planned_arrival_at")
                 for error in raised.exception.errors()
             )
         )
@@ -337,21 +311,15 @@ class TripContextSchemaTests(unittest.TestCase):
         ):
             with self.subTest(index=index, arrival=arrival):
                 payload = make_trip_context_payload()
-                payload["stop_occurrences"][index][
-                    "planned_arrival_at"
-                ] = arrival
+                payload["stop_occurrences"][index]["planned_arrival_at"] = arrival
 
                 with self.assertRaises(ValidationError):
                     TripContext.model_validate(payload)
 
     def test_rejects_decreasing_occurrence_times(self):
         payload = make_trip_context_payload()
-        payload["stop_occurrences"][0]["planned_arrival_at"] = (
-            "2026-10-21T15:20:00Z"
-        )
-        payload["stop_occurrences"][1]["planned_arrival_at"] = (
-            "2026-10-21T15:10:00Z"
-        )
+        payload["stop_occurrences"][0]["planned_arrival_at"] = "2026-10-21T15:20:00Z"
+        payload["stop_occurrences"][1]["planned_arrival_at"] = "2026-10-21T15:10:00Z"
 
         with self.assertRaises(ValidationError):
             TripContext.model_validate(payload)
@@ -375,9 +343,7 @@ class TripContextSchemaTests(unittest.TestCase):
 
     def test_normalizes_occurrence_timestamps_to_utc_and_preserves_null(self):
         payload = make_trip_context_payload()
-        payload["stop_occurrences"][0]["planned_arrival_at"] = (
-            "2026-10-21T09:00:00-06:00"
-        )
+        payload["stop_occurrences"][0]["planned_arrival_at"] = "2026-10-21T09:00:00-06:00"
         payload["stop_occurrences"][1]["planned_arrival_at"] = None
 
         context = TripContext.model_validate(payload)
@@ -387,9 +353,7 @@ class TripContextSchemaTests(unittest.TestCase):
             serialized["stop_occurrences"][0]["planned_arrival_at"],
             "2026-10-21T15:00:00Z",
         )
-        self.assertIsNone(
-            serialized["stop_occurrences"][1]["planned_arrival_at"]
-        )
+        self.assertIsNone(serialized["stop_occurrences"][1]["planned_arrival_at"])
 
     def test_rejects_non_integer_stop_sequences(self):
         for sequence in ("1", True, 1.0):
@@ -402,8 +366,7 @@ class TripContextSchemaTests(unittest.TestCase):
 
                 self.assertTrue(
                     any(
-                        error["loc"]
-                        == ("stop_occurrences", 0, "stop_sequence")
+                        error["loc"] == ("stop_occurrences", 0, "stop_sequence")
                         for error in raised.exception.errors()
                     )
                 )
@@ -424,9 +387,7 @@ class TripContextSchemaTests(unittest.TestCase):
                     payload["route_distance_m"] = value
                     expected_location = ("route_distance_m",)
                 else:
-                    payload["stop_occurrences"][0][
-                        "distance_along_route_m"
-                    ] = value
+                    payload["stop_occurrences"][0]["distance_along_route_m"] = value
                     expected_location = (
                         "stop_occurrences",
                         0,
@@ -437,10 +398,7 @@ class TripContextSchemaTests(unittest.TestCase):
                     TripContext.model_validate(payload)
 
                 self.assertTrue(
-                    any(
-                        error["loc"] == expected_location
-                        for error in raised.exception.errors()
-                    )
+                    any(error["loc"] == expected_location for error in raised.exception.errors())
                 )
 
     def test_rejects_non_numeric_coordinate_types(self):
@@ -458,7 +416,10 @@ class TripContextSchemaTests(unittest.TestCase):
                 if target == "geometry":
                     payload["route_geometry"]["coordinates"][0][field] = value
                     expected_location = (
-                        "route_geometry", "coordinates", 0, field,
+                        "route_geometry",
+                        "coordinates",
+                        0,
+                        field,
                     )
                 else:
                     payload["stop_occurrences"][0][field] = value
@@ -468,10 +429,7 @@ class TripContextSchemaTests(unittest.TestCase):
                     TripContext.model_validate(payload)
 
                 self.assertTrue(
-                    any(
-                        error["loc"] == expected_location
-                        for error in raised.exception.errors()
-                    )
+                    any(error["loc"] == expected_location for error in raised.exception.errors())
                 )
 
     def test_rejects_invalid_contract_versions(self):
@@ -485,8 +443,7 @@ class TripContextSchemaTests(unittest.TestCase):
 
                 self.assertTrue(
                     any(
-                        error["loc"] == ("contract_version",)
-                        for error in raised.exception.errors()
+                        error["loc"] == ("contract_version",) for error in raised.exception.errors()
                     )
                 )
 
@@ -500,10 +457,7 @@ class TripContextSchemaTests(unittest.TestCase):
                     TripContext.model_validate(payload)
 
                 self.assertTrue(
-                    any(
-                        error["loc"] == ("timezone",)
-                        for error in raised.exception.errors()
-                    )
+                    any(error["loc"] == ("timezone",) for error in raised.exception.errors())
                 )
 
     def test_rejects_numeric_planned_timestamps(self):
@@ -518,9 +472,7 @@ class TripContextSchemaTests(unittest.TestCase):
                 else:
                     container = payload
                     field = (
-                        "planned_departure_at"
-                        if target == "departure"
-                        else "planned_arrival_at"
+                        "planned_departure_at" if target == "departure" else "planned_arrival_at"
                     )
                     expected_location = (field,)
 
@@ -532,10 +484,7 @@ class TripContextSchemaTests(unittest.TestCase):
                     TripContext.model_validate(payload)
 
                 self.assertTrue(
-                    any(
-                        error["loc"] == expected_location
-                        for error in raised.exception.errors()
-                    )
+                    any(error["loc"] == expected_location for error in raised.exception.errors())
                 )
 
     def test_rejects_unix_timestamp_strings(self):
@@ -550,27 +499,21 @@ class TripContextSchemaTests(unittest.TestCase):
                 else:
                     container = payload
                     field = (
-                        "planned_departure_at"
-                        if target == "departure"
-                        else "planned_arrival_at"
+                        "planned_departure_at" if target == "departure" else "planned_arrival_at"
                     )
                     expected_location = (field,)
 
                 container[field] = str(
-                    datetime.fromisoformat(
-                        container[field].replace("Z", "+00:00")
-                    ).timestamp()
+                    datetime.fromisoformat(container[field].replace("Z", "+00:00")).timestamp()
                 )
 
                 with self.assertRaises(ValidationError) as raised:
                     TripContext.model_validate(payload)
 
                 self.assertTrue(
-                    any(
-                        error["loc"] == expected_location
-                        for error in raised.exception.errors()
-                    )
+                    any(error["loc"] == expected_location for error in raised.exception.errors())
                 )
+
 
 if __name__ == "__main__":
     unittest.main()

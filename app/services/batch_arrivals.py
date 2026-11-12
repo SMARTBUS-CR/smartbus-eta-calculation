@@ -4,7 +4,6 @@ from datetime import datetime, timedelta
 from math import ceil
 
 from app.config import ArrivalQualityPolicy
-
 from app.schemas.batch_arrivals_schema import (
     ArrivalEstimate,
     ArrivalQualityReason,
@@ -15,7 +14,6 @@ from app.schemas.batch_arrivals_schema import (
 )
 from app.schemas.trip_context_schema import TripContext, TripStopOccurrence
 from app.services.fallback import calculate_fallback_eta
-
 
 DISTANCE_TOLERANCE_METERS = 1
 
@@ -96,7 +94,9 @@ def _validate_targets(
         )
 
     confirmed = payload.tracking.confirmed_stop_occurrence_id
-    if confirmed is not None and all(target.stop_occurrence_id != confirmed for target in payload.targets):
+    if confirmed is not None and all(
+        target.stop_occurrence_id != confirmed for target in payload.targets
+    ):
         raise BatchInputError(
             ("tracking", "confirmed_stop_occurrence_id"), "errors.arrivals.confirmed_target_missing"
         )
