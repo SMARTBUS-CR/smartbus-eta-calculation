@@ -18,7 +18,11 @@ from app.services.trip_context_provider import (
     TripContextRevisionMismatch,
     TripContextUnavailable,
 )
-from tests.support.arrivals import make_arrivals_payload, make_arrivals_plan
+from tests.support.arrivals import (
+    make_arrivals_payload,
+    make_arrivals_plan,
+    make_confirmed_arrival_payload,
+)
 
 
 JSON_API = "application/vnd.api+json"
@@ -37,6 +41,10 @@ class BatchArrivalsApiTests(unittest.TestCase):
                 "ETA_SERVICE_KEY": "batch-service-test",
                 "TRIP_CONTEXT_BASE_URL": "https://dashboard.test",
                 "TRIP_CONTEXT_TOKEN": "dashboard-service-test",
+                "ETA_MAX_OBSERVATION_AGE_SECONDS": "30",
+                "ETA_MAX_FUTURE_SKEW_SECONDS": "5",
+                "ETA_MAX_ACCURACY_METERS": "100",
+                "ETA_MAX_EFFECTIVE_SPEED_AGE_SECONDS": "30",
             },
         )
         environment.start()
@@ -177,6 +185,93 @@ class BatchArrivalsApiTests(unittest.TestCase):
             response = self.client.post(URL, json=make_arrivals_payload(), headers=AUTHORIZATION)
         self.assert_json_api_error(response, 409, "trip_not_estimable")
 
+    def test_returns_confirmed_and_effective_arrivals_in_the_same_batch(self):
+        payload = make_confirmed_arrival_payload()
+        payload["tracking"].update(
+            effective_speed_kmh=18,
+            effective_speed_observed_at="2026-10-21T15:04:59Z",
+        )
+
+        with self.dashboard():
+            response = self.client.post(
+                URL, json=payload, headers={**AUTHORIZATION, "Accept-Language": "es"}
+            )
+
+        self.assertEqual(response.status_code, 200, response.text)
+        confirmed, upcoming = response.json()["data"]["attributes"]["arrivals"]
+        self.assertEqual(confirmed["method"], "arrived")
+        self.assertEqual(confirmed["quality_reason"], "confirmed_arrival")
+        self.assertEqual(confirmed["eta_seconds"], 0)
+        self.assertEqual(upcoming["method"], "distance_speed")
+        self.assertEqual(upcoming["quality_reason"], "recent_effective_speed")
+        self.assertEqual(upcoming["eta_seconds"], 300)
+
+    def test_applies_configured_observation_age_and_accuracy_at_inclusive_boundaries(self):
+        limits = {
+            "ETA_MAX_OBSERVATION_AGE_SECONDS": "10.25",
+            "ETA_MAX_ACCURACY_METERS": "12.5",
+        }
+        cases = (
+            ("2026-10-21T15:04:49.750001Z", 12.499999, "current_speed"),
+            ("2026-10-21T15:04:49.750000Z", 12.5, "current_speed"),
+            ("2026-10-21T15:04:49.749999Z", 12.5, "stale_observation"),
+            ("2026-10-21T15:04:49.750001Z", 12.500001, "poor_accuracy"),
+        )
+        with patch.dict(os.environ, limits), self.dashboard():
+            for observed_at, accuracy, reason in cases:
+                with self.subTest(reason=reason):
+                    payload = make_arrivals_payload()
+                    payload["observed_at"] = observed_at
+                    payload["tracking"]["accuracy_meters"] = accuracy
+
+                    response = self.client.post(URL, json=payload, headers=AUTHORIZATION)
+
+                    self.assertEqual(response.status_code, 200, response.text)
+                    arrival = response.json()["data"]["attributes"]["arrivals"][0]
+                    self.assertEqual(arrival["quality_reason"], reason)
+                    self.assertEqual(
+                        arrival["eta_seconds"], 100 if reason == "current_speed" else None
+                    )
+
+    def test_applies_configured_effective_speed_age_and_future_skew(self):
+        limits = {
+            "ETA_MAX_EFFECTIVE_SPEED_AGE_SECONDS": "8.5",
+            "ETA_MAX_FUTURE_SKEW_SECONDS": "1.25",
+        }
+        payload = make_arrivals_payload()
+        payload["tracking"].update(current_speed_kmh=0, effective_speed_kmh=18)
+        cases = (
+            ("2026-10-21T15:04:51.500000Z", 200),
+            ("2026-10-21T15:04:51.499999Z", None),
+            ("2026-10-21T15:05:01.249999Z", 200),
+            ("2026-10-21T15:05:01.250000Z", 200),
+        )
+        with patch.dict(os.environ, limits), self.dashboard():
+            for effective_at, seconds in cases:
+                with self.subTest(effective_at=effective_at):
+                    payload["tracking"]["effective_speed_observed_at"] = effective_at
+
+                    response = self.client.post(URL, json=payload, headers=AUTHORIZATION)
+
+                    self.assertEqual(response.status_code, 200, response.text)
+                    arrival = response.json()["data"]["attributes"]["arrivals"][0]
+                    self.assertEqual(arrival["eta_seconds"], seconds)
+
+            payload["tracking"]["effective_speed_observed_at"] = "2026-10-21T15:05:01.250001Z"
+            response = self.client.post(URL, json=payload, headers=AUTHORIZATION)
+            error = self.assert_json_api_error(response, 422, "invalid_input")
+            self.assertEqual(error["source"], {"pointer": "/tracking/effective_speed_observed_at"})
+
+    def test_rejects_invalid_quality_configuration_before_accessing_dashboard(self):
+        with (
+            patch.dict(os.environ, {"ETA_MAX_FUTURE_SKEW_SECONDS": "NaN"}),
+            self.dashboard() as (factory, _),
+        ):
+            response = self.client.post(URL, json=make_arrivals_payload(), headers=AUTHORIZATION)
+
+        self.assert_json_api_error(response, 503, "eta_not_ready")
+        factory.assert_not_called()
+
     def test_documents_the_contract_media_types_examples_and_bearer_security(self):
         spec = self.client.get("/openapi.json").json()
         operation = spec["paths"]["/api/v1/eta/trips/{trip_id}/arrivals"]["post"]
@@ -192,6 +287,10 @@ class BatchArrivalsApiTests(unittest.TestCase):
                 self.assertIn("schema", content[JSON_API])
         self.assertIn("example", operation["responses"]["200"]["content"][JSON_API])
         self.assertIn("WWW-Authenticate", operation["responses"]["401"]["headers"])
+        arrival = spec["components"]["schemas"]["ArrivalEstimate"]["properties"]
+        self.assertIn("arrived", arrival["method"]["enum"])
+        self.assertIn("confirmed_arrival", arrival["quality_reason"]["enum"])
+        self.assertIn("recent_effective_speed", arrival["quality_reason"]["enum"])
         legacy = spec["paths"]["/api/v1/eta/calculate"]["post"]
         self.assertNotIn("security", legacy)
         self.assertIn("application/json", legacy["responses"]["200"]["content"])

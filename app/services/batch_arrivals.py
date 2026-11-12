@@ -3,20 +3,20 @@
 from datetime import datetime, timedelta
 from math import ceil
 
+from app.config import ArrivalQualityPolicy
+
 from app.schemas.batch_arrivals_schema import (
     ArrivalEstimate,
     ArrivalQualityReason,
     ArrivalTarget,
     BatchArrivalsAttributes,
     BatchArrivalsRequest,
+    TrackingProgress,
 )
 from app.schemas.trip_context_schema import TripContext, TripStopOccurrence
 from app.services.fallback import calculate_fallback_eta
 
 
-MAX_FUTURE_SKEW = timedelta(seconds=5)
-MAX_OBSERVATION_AGE_SECONDS = 30
-MAX_ACCURACY_METERS = 100
 DISTANCE_TOLERANCE_METERS = 1
 
 
@@ -34,14 +34,21 @@ class TripNotEstimable(ValueError):
 
 
 def calculate_batch_arrivals(
-    payload: BatchArrivalsRequest, context: TripContext, *, calculated_at: datetime
+    payload: BatchArrivalsRequest,
+    context: TripContext,
+    *,
+    calculated_at: datetime,
+    quality_policy: ArrivalQualityPolicy,
 ) -> BatchArrivalsAttributes:
     """Calculate all estimates with one server clock reading."""
     for instant, path in (
         (payload.observed_at, ("observed_at",)),
         (payload.tracking.effective_speed_observed_at, ("tracking", "effective_speed_observed_at")),
     ):
-        if instant is not None and instant - calculated_at > MAX_FUTURE_SKEW:
+        if (
+            instant is not None
+            and (instant - calculated_at).total_seconds() > quality_policy.max_future_skew_seconds
+        ):
             raise BatchInputError(path, "errors.arrivals.future_observation")
 
     targets = _validate_targets(payload, context)
@@ -49,11 +56,22 @@ def calculate_batch_arrivals(
         raise TripNotEstimable("The trip has ended.")
 
     source_age = max(0.0, (calculated_at - payload.observed_at).total_seconds())
-    problem = _observation_problem(payload, context, source_age)
-    speed = payload.tracking.current_speed_kmh
+    problem = _observation_problem(payload, context, source_age, quality_policy)
+    speed, speed_reason = _select_speed(
+        payload.tracking, calculated_at, quality_policy.max_effective_speed_age_seconds
+    )
     confirmed = payload.tracking.confirmed_stop_occurrence_id
+    confirmed_at = min(payload.observed_at, calculated_at)
     arrivals = [
-        _estimate_arrival(target, stop, calculated_at, speed, problem, confirmed == stop.occurrence_id)
+        _estimate_arrival(
+            target,
+            stop,
+            calculated_at,
+            speed=speed,
+            problem=problem,
+            confirmed_at=confirmed_at if confirmed == stop.occurrence_id else None,
+            speed_reason=speed_reason,
+        )
         for target, stop in targets
     ]
     return BatchArrivalsAttributes(
@@ -110,36 +128,67 @@ def _validate_targets(
 
 
 def _observation_problem(
-    payload: BatchArrivalsRequest, context: TripContext, source_age: float
+    payload: BatchArrivalsRequest,
+    context: TripContext,
+    source_age: float,
+    quality_policy: ArrivalQualityPolicy,
 ) -> ArrivalQualityReason | None:
     tracking = payload.tracking
     if context.status == "scheduled":
         return "trip_not_started"
-    if source_age > MAX_OBSERVATION_AGE_SECONDS:
+    if source_age > quality_policy.max_observation_age_seconds:
         return "stale_observation"
     if not tracking.on_route:
         return "off_route"
-    if tracking.accuracy_meters is None or tracking.accuracy_meters > MAX_ACCURACY_METERS:
+    if (
+        tracking.accuracy_meters is None
+        or tracking.accuracy_meters > quality_policy.max_accuracy_meters
+    ):
         return "poor_accuracy"
     return None
+
+
+def _select_speed(
+    tracking: TrackingProgress, calculated_at: datetime, max_effective_age: float
+) -> tuple[float | None, ArrivalQualityReason]:
+    current = tracking.current_speed_kmh
+    if current is not None and current > 0:
+        return current, "current_speed"
+
+    effective = tracking.effective_speed_kmh
+    effective_at = tracking.effective_speed_observed_at
+    if (
+        effective is not None
+        and effective > 0
+        and effective_at is not None
+        and (calculated_at - effective_at).total_seconds() <= max_effective_age
+    ):
+        return effective, "recent_effective_speed"
+    return None, "no_usable_speed"
 
 
 def _estimate_arrival(
     target: ArrivalTarget,
     stop: TripStopOccurrence,
     calculated_at: datetime,
+    *,
     speed: float | None,
     problem: ArrivalQualityReason | None,
-    confirmed: bool,
+    confirmed_at: datetime | None,
+    speed_reason: ArrivalQualityReason,
 ) -> ArrivalEstimate:
     seconds = None
     arrival_at = None
     reason = problem
     if reason is None:
-        if target.remaining_distance_m == 0:
-            reason = "calculation_unavailable" if confirmed else "arrival_unconfirmed"
-        elif speed is None or speed == 0:
-            reason = "no_usable_speed"
+        if confirmed_at is not None:
+            seconds = 0
+            arrival_at = confirmed_at
+            reason = "confirmed_arrival"
+        elif target.remaining_distance_m == 0:
+            reason = "arrival_unconfirmed"
+        elif speed is None:
+            reason = speed_reason
         else:
             try:
                 estimate = ceil(calculate_fallback_eta(target.remaining_distance_m, speed))
@@ -148,7 +197,9 @@ def _estimate_arrival(
             except (ValueError, OverflowError):
                 reason = "calculation_unavailable"
 
-    if seconds is not None:
+    if reason == "confirmed_arrival":
+        method = "arrived"
+    elif seconds is not None:
         method = "distance_speed"
     elif stop.planned_arrival_at is not None and reason != "calculation_unavailable":
         method = "scheduled_reference"
@@ -163,6 +214,6 @@ def _estimate_arrival(
         arrival_at=arrival_at,
         planned_arrival_at=stop.planned_arrival_at,
         method=method,
-        quality_reason=reason or "current_speed",
+        quality_reason=reason or speed_reason,
         model_version=None,
     )

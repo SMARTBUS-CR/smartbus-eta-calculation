@@ -10,7 +10,7 @@ from fastapi import APIRouter, Body, Depends, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.api.arrivals_errors import ArrivalErrors, ArrivalsApiError, JsonApiResponse, json_pointer
-from app.config import TripContextSettings
+from app.config import ArrivalQualityPolicy, TripContextSettings
 from app.schemas.batch_arrivals_schema import (
     ARRIVALS_REQUEST_EXAMPLE,
     ARRIVALS_RESPONSE_EXAMPLE,
@@ -81,9 +81,15 @@ def trip_arrivals(
         Body(openapi_examples={"moving_bus": {"value": ARRIVALS_REQUEST_EXAMPLE}}),
     ],
 ) -> BatchArrivalsResponse:
-    """Resolve one operational plan and calculate against a single source observation."""
+    """Resolve one operational plan and apply the arrival quality policy.
+
+    Usable observations may report confirmed arrivals or estimates from current
+    or recent effective speed. Degraded observations return a planned reference
+    when available, with null live fields.
+    """
     try:
         settings = TripContextSettings.from_environment()
+        quality_policy = ArrivalQualityPolicy.from_environment()
     except ValueError as error:
         raise ArrivalsApiError(503, "eta_not_ready") from error
 
@@ -101,7 +107,10 @@ def trip_arrivals(
 
     try:
         attributes = calculate_batch_arrivals(
-            payload, context, calculated_at=datetime.now(timezone.utc)
+            payload,
+            context,
+            calculated_at=datetime.now(timezone.utc),
+            quality_policy=quality_policy,
         )
     except BatchInputError as error:
         raise ArrivalsApiError(
