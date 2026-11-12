@@ -1,18 +1,20 @@
 """Tests for retrieving operational Trip context over HTTP."""
 
-from uuid import UUID
 import unittest
+from uuid import UUID
 
 import httpx2
 
 from app.config import TripContextSettings
 from app.schemas.trip_context_schema import TripContext
-from app.services.trip_context_provider import HttpTripContextProvider
-from app.services.trip_context_provider import TripContextInvalidResponse
-from app.services.trip_context_provider import TripContextNotFound
-from app.services.trip_context_provider import TripContextRevisionMismatch
-from app.services.trip_context_provider import TripContextUnavailable
-from app.services.trip_context_provider import open_trip_context_provider
+from app.services.trip_context_provider import (
+    HttpTripContextProvider,
+    TripContextInvalidResponse,
+    TripContextNotFound,
+    TripContextRevisionMismatch,
+    TripContextUnavailable,
+    open_trip_context_provider,
+)
 from tests.support.trip_context import make_trip_context_payload
 
 
@@ -41,10 +43,7 @@ class HttpTripContextProviderTests(unittest.TestCase):
         self.assertEqual(context.route_revision, payload["route_revision"])
         self.assertEqual(
             [item.occurrence_id for item in context.stop_occurrences],
-            [
-                UUID(item["occurrence_id"])
-                for item in payload["stop_occurrences"]
-            ],
+            [UUID(item["occurrence_id"]) for item in payload["stop_occurrences"]],
         )
         self.assertEqual(len(requests), 1)
         self.assertEqual(requests[0].method, "GET")
@@ -423,9 +422,7 @@ class HttpTripContextProviderTests(unittest.TestCase):
                 self.closed = True
                 super().close()
 
-        transport = TrackingTransport(
-            lambda request: httpx2.Response(200)
-        )
+        transport = TrackingTransport(lambda request: httpx2.Response(200))
         settings = TripContextSettings(
             base_url="https://dashboard.test",
             token="test-service-token",

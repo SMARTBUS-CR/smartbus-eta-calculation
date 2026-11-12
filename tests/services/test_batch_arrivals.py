@@ -18,7 +18,6 @@ from tests.support.arrivals import (
     make_confirmed_arrival_payload,
 )
 
-
 CALCULATED_AT = datetime(2026, 10, 21, 15, 5, tzinfo=timezone.utc)
 
 
@@ -153,7 +152,9 @@ class BatchArrivalsTests(unittest.TestCase):
         self.assertEqual(self.calculate(payload)["arrivals"][0]["eta_seconds"], 100)
 
         payload["observed_at"] = "2026-10-21T15:04:29.999999Z"
-        self.assertEqual(self.calculate(payload)["arrivals"][0]["quality_reason"], "stale_observation")
+        self.assertEqual(
+            self.calculate(payload)["arrivals"][0]["quality_reason"], "stale_observation"
+        )
 
         payload["observed_at"] = "2026-10-21T15:05:00Z"
         payload["tracking"]["distance_along_route_m"] = 1000.0
@@ -237,7 +238,8 @@ class BatchArrivalsTests(unittest.TestCase):
                 self.assertEqual(arrival["quality_reason"], reason)
                 self.assertEqual(arrival["eta_seconds"], seconds)
                 self.assertEqual(
-                    arrival["method"], "scheduled_reference" if seconds is None else "distance_speed"
+                    arrival["method"],
+                    "scheduled_reference" if seconds is None else "distance_speed",
                 )
                 if reason == "recent_effective_speed":
                     self.assertEqual(arrival["arrival_at"], "2026-10-21T15:08:20Z")
@@ -296,7 +298,10 @@ class BatchArrivalsTests(unittest.TestCase):
                 arrival = self.calculate(payload, plan, calculated_at=calculated_at)["arrivals"][0]
 
                 self.assertEqual(arrival["planned_arrival_at"], planned_at)
-                self.assertEqual(arrival["method"], "unavailable" if planned_at is None else "scheduled_reference")
+                self.assertEqual(
+                    arrival["method"],
+                    "unavailable" if planned_at is None else "scheduled_reference",
+                )
                 self.assertIsNone(arrival["eta_seconds"])
                 self.assertIsNone(arrival["arrival_at"])
 

@@ -27,7 +27,6 @@ from app.services.trip_context_provider import (
     open_trip_context_provider,
 )
 
-
 router = APIRouter()
 
 
@@ -37,7 +36,9 @@ ERROR_RESPONSES = {
         "description": description,
         "content": {
             JsonApiResponse.media_type: {
-                "examples": {code: {"value": arrival_error_example(status, code)} for code in codes},
+                "examples": {
+                    code: {"value": arrival_error_example(status, code)} for code in codes
+                },
             }
         },
     }

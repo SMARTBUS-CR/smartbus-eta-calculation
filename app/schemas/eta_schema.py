@@ -23,9 +23,7 @@ class EtaRequest(BaseModel):
     route_id: str = Field(
         ..., description="Route identifier", json_schema_extra={"example": "R-101"}
     )
-    stop_id: str = Field(
-        ..., description="Stop identifier", json_schema_extra={"example": "S-505"}
-    )
+    stop_id: str = Field(..., description="Stop identifier", json_schema_extra={"example": "S-505"})
 
 
 class EtaAttributesResponse(BaseModel):
@@ -37,9 +35,7 @@ class EtaAttributesResponse(BaseModel):
     eta_seconds: int = Field(..., json_schema_extra={"example": 354})
     eta_format: str = Field(..., json_schema_extra={"example": "5 min 54 s"})
     confidence: float = Field(..., json_schema_extra={"example": 0.82})
-    calculated_at: str = Field(
-        ..., json_schema_extra={"example": "2026-09-29T15:32:43Z"}
-    )
+    calculated_at: str = Field(..., json_schema_extra={"example": "2026-09-29T15:32:43Z"})
     route_id: str = Field(..., json_schema_extra={"example": "R-101"})
     stop_id: str = Field(..., json_schema_extra={"example": "S-505"})
 

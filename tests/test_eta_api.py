@@ -101,9 +101,7 @@ class EtaApiTests(unittest.TestCase):
         self.assertIn("current_speed_kmh", response.json()["errors"])
 
     def test_missing_required_fields_return_422(self):
-        response = self.client.post(
-            "/api/v1/eta/calculate", json={"current_speed_kmh": 32.5}
-        )
+        response = self.client.post("/api/v1/eta/calculate", json={"current_speed_kmh": 32.5})
 
         self.assertEqual(response.status_code, 422)
         self.assertIn("remaining_distance_m", response.json()["errors"])

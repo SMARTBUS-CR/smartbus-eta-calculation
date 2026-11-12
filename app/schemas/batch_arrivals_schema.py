@@ -152,9 +152,7 @@ ARRIVALS_REQUEST_EXAMPLE = {
         "distance_along_route_m": 1212.16,
         "confirmed_stop_occurrence_id": None,
     },
-    "targets": [
-        {"stop_occurrence_id": _EXAMPLE_OCCURRENCE, "remaining_distance_m": 1000.0}
-    ],
+    "targets": [{"stop_occurrence_id": _EXAMPLE_OCCURRENCE, "remaining_distance_m": 1000.0}],
 }
 
 ARRIVALS_RESPONSE_EXAMPLE = {

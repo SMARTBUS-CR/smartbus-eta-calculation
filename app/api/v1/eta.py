@@ -10,7 +10,6 @@ from app.schemas.eta_schema import (
 )
 from app.services.eta_service import calculate_eta as calculate_eta_service
 
-
 router = APIRouter()
 
 
