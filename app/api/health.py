@@ -2,10 +2,10 @@
 
 from typing import Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter
 from pydantic import BaseModel
 
-from app.api.arrivals_dependencies import authenticate_eta_service, load_arrivals_settings
+from app.api.arrivals_dependencies import load_arrivals_settings
 from app.api.arrivals_errors import ArrivalErrors, JsonApiResponse
 
 router = APIRouter(prefix="/health", tags=["Health"])
@@ -38,13 +38,8 @@ async def liveness() -> LivenessResponse:
 @router.get(
     "/ready",
     summary="Check local ETA calculation readiness",
-    dependencies=[Depends(authenticate_eta_service)],
+    openapi_extra={"security": []},
     responses={
-        401: {
-            "description": "Missing or invalid ETA service credential.",
-            "headers": {"WWW-Authenticate": {"schema": {"type": "string"}, "example": "Bearer"}},
-            "content": _ERROR_CONTENT,
-        },
         503: {"description": "Invalid ETA service configuration.", "content": _ERROR_CONTENT},
     },
 )

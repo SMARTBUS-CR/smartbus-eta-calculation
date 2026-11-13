@@ -12,7 +12,7 @@ class TripContextSettings:
     """Connection settings for the operational Trip context provider."""
 
     base_url: str
-    token: str = field(repr=False)
+    token: str | None = field(default=None, repr=False)
     timeout_seconds: float = 3.0
 
     @classmethod
@@ -34,10 +34,8 @@ class TripContextSettings:
         if not isfinite(timeout_seconds) or timeout_seconds <= 0:
             raise ValueError("TRIP_CONTEXT_TIMEOUT_SECONDS must be positive and finite.")
 
-        token = os.environ.get("TRIP_CONTEXT_TOKEN", "")
-
-        if not token.strip():
-            raise ValueError("TRIP_CONTEXT_TOKEN must be configured and not blank.")
+        token = os.environ.get("TRIP_CONTEXT_TOKEN")
+        token = token.strip() if token is not None and token.strip() else None
 
         return cls(
             base_url=base_url,

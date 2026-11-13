@@ -45,6 +45,7 @@ def openapi_with_arrivals_examples() -> dict[str, Any]:
     paths = schema.get("paths", {})
     for public_path, method in [
         ("/health/live", "get"),
+        ("/health/ready", "get"),
         ("/api/v1/eta/calculate", "post"),
     ]:
         if public_path in paths and method in paths[public_path]:

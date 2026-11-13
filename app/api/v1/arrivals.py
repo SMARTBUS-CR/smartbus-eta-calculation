@@ -1,11 +1,12 @@
 """Internal API for correlated batch arrival estimates."""
 
 from datetime import datetime, timezone
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
 
-from app.api.arrivals_dependencies import authenticate_eta_service, load_arrivals_settings
+from app.api.arrivals_dependencies import extract_bearer_token, load_arrivals_settings
 from app.api.arrivals_errors import (
     ArrivalErrors,
     ArrivalsApiError,
@@ -20,9 +21,11 @@ from app.schemas.batch_arrivals_schema import (
 )
 from app.services.batch_arrivals import BatchInputError, TripNotEstimable, calculate_batch_arrivals
 from app.services.trip_context_provider import (
+    TripContextForbidden,
     TripContextInvalidResponse,
     TripContextNotFound,
     TripContextRevisionMismatch,
+    TripContextUnauthorized,
     TripContextUnavailable,
     open_trip_context_provider,
 )
@@ -44,6 +47,7 @@ ERROR_RESPONSES = {
     }
     for status, (description, codes) in {
         401: ("Missing or invalid ETA service credential.", ("unauthorized_service",)),
+        403: ("Forbidden from accessing operational trip context.", ("forbidden",)),
         404: ("Trip context not found.", ("trip_context_not_found",)),
         409: (
             "Trip is not estimable or its route revision has changed.",
@@ -67,13 +71,13 @@ ERROR_RESPONSES[401]["headers"] = {
     "/trips/{trip_id}/arrivals",
     response_model=BatchArrivalsResponse,
     response_class=JsonApiResponse,
-    dependencies=[Depends(authenticate_eta_service)],
     summary="Calculate ordered arrival estimates for a Trip",
     responses=ERROR_RESPONSES,
 )
 def trip_arrivals(
     trip_id: UUID,
     payload: BatchArrivalsRequest,
+    auth_token: Annotated[str, Depends(extract_bearer_token)],
 ) -> BatchArrivalsResponse:
     """Resolve one operational plan and apply the arrival quality policy.
 
@@ -85,7 +89,15 @@ def trip_arrivals(
 
     try:
         with open_trip_context_provider(settings) as provider:
-            context = provider.get_context(trip_id, expected_revision=payload.route_revision)
+            context = provider.get_context(
+                trip_id,
+                expected_revision=payload.route_revision,
+                auth_token=auth_token,
+            )
+    except TripContextUnauthorized as error:
+        raise ArrivalsApiError(401, "unauthorized_service") from error
+    except TripContextForbidden as error:
+        raise ArrivalsApiError(403, "forbidden") from error
     except TripContextNotFound as error:
         raise ArrivalsApiError(404, "trip_context_not_found") from error
     except TripContextRevisionMismatch as error:

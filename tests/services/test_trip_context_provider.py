@@ -9,9 +9,11 @@ from app.config import TripContextSettings
 from app.schemas.trip_context_schema import TripContext
 from app.services.trip_context_provider import (
     HttpTripContextProvider,
+    TripContextForbidden,
     TripContextInvalidResponse,
     TripContextNotFound,
     TripContextRevisionMismatch,
+    TripContextUnauthorized,
     TripContextUnavailable,
     open_trip_context_provider,
 )
@@ -129,7 +131,7 @@ class HttpTripContextProviderTests(unittest.TestCase):
         self.assertEqual(len(requests), 1)
 
     def test_rejects_unexpected_provider_http_statuses(self):
-        for status_code in (301, 401, 403, 429, 500, 503):
+        for status_code in (301, 429, 500, 503):
             with self.subTest(status_code=status_code):
                 trip_id = UUID("11111111-1111-4111-8111-111111111111")
                 requests = []
@@ -362,6 +364,38 @@ class HttpTripContextProviderTests(unittest.TestCase):
             f"Bearer {token}",
         )
         self.assertNotIn(token, str(requests[0].url))
+
+    def test_propagates_the_request_bearer_token_over_the_configured_token(self):
+        payload = make_trip_context_payload()
+        requests = []
+
+        def handle_request(request: httpx2.Request) -> httpx2.Response:
+            requests.append(request)
+            return httpx2.Response(200, json=payload)
+
+        with httpx2.Client(
+            base_url="https://dashboard.test",
+            transport=httpx2.MockTransport(handle_request),
+        ) as client:
+            provider = HttpTripContextProvider(client=client, token="legacy-configured-token")
+            provider.get_context(UUID(payload["trip_id"]), auth_token="valid_sanctum_token_123")
+
+        self.assertEqual(requests[0].headers["Authorization"], "Bearer valid_sanctum_token_123")
+
+    def test_maps_dashboard_authentication_statuses(self):
+        trip_id = UUID("11111111-1111-4111-8111-111111111111")
+        cases = ((401, TripContextUnauthorized), (403, TripContextForbidden))
+        for status_code, error_type in cases:
+            with self.subTest(status_code=status_code):
+                with httpx2.Client(
+                    base_url="https://dashboard.test",
+                    transport=httpx2.MockTransport(
+                        lambda request, status_code=status_code: httpx2.Response(status_code)
+                    ),
+                ) as client:
+                    provider = HttpTripContextProvider(client=client)
+                    with self.assertRaises(error_type):
+                        provider.get_context(trip_id, auth_token="valid_sanctum_token_123")
 
     def test_rejects_blank_service_tokens(self):
         for token in ("", "   ", "\t", "\n"):

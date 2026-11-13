@@ -8,16 +8,20 @@ from datetime import datetime, timezone
 from unittest.mock import patch
 from uuid import UUID
 
+from fastapi.security import HTTPAuthorizationCredentials
 from fastapi.testclient import TestClient
 
-from app.api.arrivals_errors import ArrivalErrors
+from app.api.arrivals_dependencies import extract_bearer_token
+from app.api.arrivals_errors import ArrivalErrors, ArrivalsApiError
 from app.main import app
 from app.schemas.batch_arrivals_schema import BatchArrivalsRequest, BatchArrivalsResponse
 from app.schemas.trip_context_schema import TripContext
 from app.services.trip_context_provider import (
+    TripContextForbidden,
     TripContextInvalidResponse,
     TripContextNotFound,
     TripContextRevisionMismatch,
+    TripContextUnauthorized,
     TripContextUnavailable,
 )
 from tests.support.arrivals import (
@@ -39,9 +43,7 @@ class BatchArrivalsApiTests(unittest.TestCase):
         environment = patch.dict(
             os.environ,
             {
-                "ETA_SERVICE_KEY": "batch-service-test",
                 "TRIP_CONTEXT_BASE_URL": "https://dashboard.test",
-                "TRIP_CONTEXT_TOKEN": "dashboard-service-test",
                 "ETA_MAX_OBSERVATION_AGE_SECONDS": "30",
                 "ETA_MAX_FUTURE_SKEW_SECONDS": "5",
                 "ETA_MAX_ACCURACY_METERS": "100",
@@ -103,14 +105,15 @@ class BatchArrivalsApiTests(unittest.TestCase):
         self.assertEqual(attributes["calculated_at"], "2026-10-21T15:05:00Z")
         self.assertEqual([item["eta_seconds"] for item in attributes["arrivals"]], [100, 250])
         provider.get_context.assert_called_once_with(
-            TRIP_ID, expected_revision=payload["route_revision"]
+            TRIP_ID,
+            expected_revision=payload["route_revision"],
+            auth_token="batch-service-test",
         )
-        self.assertEqual(factory.call_args.args[0].token, "dashboard-service-test")
+        self.assertIsNone(factory.call_args.args[0].token)
 
-    def test_rejects_missing_invalid_and_forged_credentials_before_accessing_dashboard(self):
+    def test_rejects_missing_or_non_bearer_credentials_before_accessing_dashboard(self):
         for headers in (
             {},
-            {"Authorization": "Bearer wrong-key"},
             {"Authorization": "Basic batch-service-test"},
             {"X-User-Id": str(TRIP_ID), "X-User-Role": "admin"},
         ):
@@ -120,8 +123,28 @@ class BatchArrivalsApiTests(unittest.TestCase):
                 self.assertEqual(response.headers["www-authenticate"], "Bearer")
                 factory.assert_not_called()
 
-    def test_fails_closed_when_batch_or_provider_configuration_is_missing(self):
-        for setting in ("ETA_SERVICE_KEY", "TRIP_CONTEXT_TOKEN"):
+    def test_rejects_malformed_bearer_tokens_before_accessing_dashboard(self):
+        with self.dashboard() as (factory, _):
+            response = self.client.post(
+                URL,
+                json=make_arrivals_payload(),
+                headers={"Authorization": "Bearer invalid token"},
+            )
+
+        self.assert_json_api_error(response, 401, "unauthorized_service")
+        factory.assert_not_called()
+
+    def test_rejects_non_ascii_bearer_tokens_before_http_header_construction(self):
+        credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="token-é")
+
+        with self.assertRaises(ArrivalsApiError) as raised:
+            extract_bearer_token(credentials)
+
+        self.assertEqual(raised.exception.status, 401)
+        self.assertEqual(raised.exception.code, "unauthorized_service")
+
+    def test_fails_closed_when_required_provider_configuration_is_missing(self):
+        for setting in ("TRIP_CONTEXT_BASE_URL",):
             with (
                 self.subTest(setting=setting),
                 patch.dict(os.environ, {setting: ""}),
@@ -171,6 +194,8 @@ class BatchArrivalsApiTests(unittest.TestCase):
             (TripContextRevisionMismatch, 409, "route_revision_mismatch"),
             (TripContextInvalidResponse, 502, "trip_context_invalid_response"),
             (TripContextUnavailable, 503, "trip_context_unavailable"),
+            (TripContextUnauthorized, 401, "unauthorized_service"),
+            (TripContextForbidden, 403, "forbidden"),
         )
         for error_type, status, code in cases:
             with self.subTest(error_type=error_type), self.dashboard() as (_, provider):
@@ -283,7 +308,7 @@ class BatchArrivalsApiTests(unittest.TestCase):
         request = operation["requestBody"]["content"]["application/json"]
         self.assertIn("moving_bus", request["examples"])
         self.assertIn("BatchArrivalsRequest", request["schema"]["$ref"])
-        for code in ("200", "401", "404", "409", "422", "500", "502", "503"):
+        for code in ("200", "401", "403", "404", "409", "422", "500", "502", "503"):
             with self.subTest(code=code):
                 content = operation["responses"][code]["content"]
                 self.assertIn(JSON_API, content)
@@ -311,6 +336,7 @@ class BatchArrivalsApiTests(unittest.TestCase):
         responses = spec["paths"]["/api/v1/eta/trips/{trip_id}/arrivals"]["post"]["responses"]
         expected_codes = {
             "401": {"unauthorized_service"},
+            "403": {"forbidden"},
             "404": {"trip_context_not_found"},
             "409": {"route_revision_mismatch", "trip_not_estimable"},
             "422": {"invalid_input"},

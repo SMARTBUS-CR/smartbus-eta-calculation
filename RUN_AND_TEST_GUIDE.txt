@@ -112,17 +112,17 @@ Expected behavior:
 
   $env:OPENBLAS_NUM_THREADS = '1'
   $env:OMP_NUM_THREADS = '1'
-  .\.venv\Scripts\python.exe -m unittest discover -s tests -t . -p 'test_*.py' -v
+  .\.venv\Scripts\python.exe -m pytest tests/ -v
 
 Discovery includes the API, schema, and service suites.
 
 9. RUN ONLY API TESTS
 
-  .\.venv\Scripts\python.exe -m unittest tests.test_eta_api tests.test_batch_arrivals_api -v
+  .\.venv\Scripts\python.exe -m pytest tests/test_eta_api.py tests/test_batch_arrivals_api.py -v
 
 10. RUN ONLY SERVICE TESTS
 
-  .\.venv\Scripts\python.exe -m unittest discover -s tests/services -t . -p 'test_*.py' -v
+  .\.venv\Scripts\python.exe -m pytest tests/services/ -v
 
 11. VERIFY DEPENDENCIES
 
@@ -139,11 +139,20 @@ Discovery includes the API, schema, and service suites.
 
 13. TEST THE INTERNAL BATCH ENDPOINT
 
-- Start Dashboard with the eta-v1 tracking-context projection enabled.
-- Set TRIP_CONTEXT_BASE_URL to the Dashboard service URL and configure the same
-  TRIP_CONTEXT_TOKEN in Dashboard and ETA.
-- Set ETA_SERVICE_KEY in ETA and use it as the caller's Bearer credential.
-- Send POST /api/v1/eta/trips/{trip_id}/arrivals with Content-Type: application/json.
+- Deploy Dashboard PR #111, or its equivalent release, before enabling this
+  integration. Dashboard must expose the eta-v1 tracking-context projection and
+  accept the active user's Sanctum Bearer token on that endpoint.
+- Set TRIP_CONTEXT_BASE_URL to the Dashboard service URL. Do not configure
+  ETA_SERVICE_KEY: the ETA service no longer uses static shared credentials.
+- Obtain a valid Sanctum token from the active Dashboard user session. Send it
+  as Authorization: Bearer <sanctum_token> to the ETA batch endpoint. ETA
+  forwards that exact token to Dashboard; it must have permission to read the
+  requested Trip context.
+- TRIP_CONTEXT_TOKEN is optional and is not used when an incoming Bearer token
+  is present. Leave it unset for the normal user-token integration.
+- Send POST /api/v1/eta/trips/{trip_id}/arrivals with Content-Type: application/json
+  and the Authorization header. Use the moving_bus example in /docs, substituting
+  the saved trip revision, occurrence IDs, route progress and a fresh UTC observed_at.
   Use the moving_bus example in /docs, substituting the saved trip revision,
   occurrence IDs, route progress and a fresh UTC observed_at.
 - A usable moving observation returns ordered JSON:API arrivals with separate
@@ -169,12 +178,13 @@ Values must be finite and nonnegative. Invalid configuration returns
 14. VERIFY SERVICE HEALTH AND TRACKING INTEGRATION
 
 - GET /health/live is public and returns {"status":"alive"}.
-- GET /health/ready uses Authorization: Bearer <ETA_SERVICE_KEY>. Valid local
-  settings return {"status":"ready","calculation":"available","ml":"disabled"}.
-  Readiness checks local configuration. Use a batch request to verify the
-  connection to Dashboard.
-- Start both services with the credentials from section 13. Use a saved
-  Dashboard trip and the moving_bus request example in /docs. Verify the
+- GET /health/ready does not require a Bearer token. Valid local settings return
+  {"status":"ready","calculation":"available","ml":"disabled"}. Readiness
+  checks local configuration only; use an authenticated batch request to verify
+  the Dashboard connection.
+- Start both services after coordinating the Dashboard deployment described in
+  section 13. Use a saved Dashboard trip, a user Sanctum token and the moving_bus
+  request example in /docs. Verify the
   returned occurrence order and the separate planned and live arrival fields.
   A scheduled trip returns planned references or unavailable results.
 
