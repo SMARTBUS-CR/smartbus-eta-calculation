@@ -36,7 +36,7 @@ jobs:
         run: ruff check .
 
   # ==========================================
-  # STEP 2: TEST SUITE (Unittest & Integration)
+  # STEP 2: TEST SUITE (Pytest & Integration)
   # ==========================================
   tests:
     name: Run Automated Tests
@@ -60,6 +60,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run Unittest Discovery
+      - name: Run Pytest Suite
         run: |
-          python -m unittest discover -s tests -t . -p 'test_*.py' -v
+          python -m pytest tests/ -v

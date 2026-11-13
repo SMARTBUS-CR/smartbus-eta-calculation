@@ -1,7 +1,5 @@
 """Authentication and configuration shared by arrivals and readiness."""
 
-import os
-from secrets import compare_digest
 from typing import Annotated
 
 from fastapi import Security
@@ -13,18 +11,22 @@ from app.config import ArrivalQualityPolicy, TripContextSettings
 service_bearer = HTTPBearer(
     auto_error=False,
     scheme_name="EtaServiceBearer",
-    description="Service credential configured as ETA_SERVICE_KEY.",
+    description="Sanctum Bearer token forwarded to the operational Dashboard.",
 )
 
 
-def authenticate_eta_service(
+def _is_valid_bearer_token(token: str) -> bool:
+    """Return whether a token can be safely sent as an HTTP header value."""
+    return bool(token) and token.isascii() and all("!" <= character <= "~" for character in token)
+
+
+def extract_bearer_token(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Security(service_bearer)],
-) -> None:
-    key = os.environ.get("ETA_SERVICE_KEY")
-    if key is None or not key.strip():
-        raise ArrivalsApiError(503, "eta_not_ready")
-    if credentials is None or not compare_digest(credentials.credentials.encode(), key.encode()):
+) -> str:
+    """Extract the active user's non-empty Sanctum Bearer token."""
+    if credentials is None or not _is_valid_bearer_token(credentials.credentials):
         raise ArrivalsApiError(401, "unauthorized_service")
+    return credentials.credentials
 
 
 def load_arrivals_settings() -> tuple[TripContextSettings, ArrivalQualityPolicy]:

@@ -30,6 +30,14 @@ class TripContextUnavailable(RuntimeError):
     """The operational Trip context provider cannot be reached."""
 
 
+class TripContextUnauthorized(RuntimeError):
+    """The Dashboard rejected the operational authentication token."""
+
+
+class TripContextForbidden(RuntimeError):
+    """The token cannot access the operational Trip context."""
+
+
 class TripContextProvider(Protocol):
     """Contract for retrieving a typed operational Trip plan."""
 
@@ -38,6 +46,7 @@ class TripContextProvider(Protocol):
         trip_id: UUID,
         *,
         expected_revision: str | None = None,
+        auth_token: str | None = None,
     ) -> TripContext: ...
 
 
@@ -66,13 +75,16 @@ class HttpTripContextProvider:
         trip_id: UUID,
         *,
         expected_revision: str | None = None,
+        auth_token: str | None = None,
     ) -> TripContext:
         """Retrieve the Trip context for the given Trip ID."""
 
         headers = {}
-
-        if self._token is not None:
-            headers["Authorization"] = f"Bearer {self._token}"
+        selected_token = auth_token if auth_token is not None else self._token
+        if selected_token is not None:
+            if not selected_token.strip():
+                raise ValueError("Trip context authentication token must not be blank.")
+            headers["Authorization"] = f"Bearer {selected_token}"
 
         try:
             response = self._client.get(
@@ -93,6 +105,12 @@ class HttpTripContextProvider:
 
         if response.status_code == 404:
             raise TripContextNotFound("The requested Trip context was not found.")
+        if response.status_code == 401:
+            raise TripContextUnauthorized(
+                "Dashboard rejected the operational authentication token."
+            )
+        if response.status_code == 403:
+            raise TripContextForbidden("Forbidden from accessing operational trip context.")
 
         try:
             response.raise_for_status()
