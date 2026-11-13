@@ -31,6 +31,7 @@ class ArrivalErrors(BaseModel):
 
 _TITLE_KEYS = {
     401: "errors.arrivals.unauthorized_title",
+    403: "errors.arrivals.forbidden_title",
     404: "errors.arrivals.not_found_title",
     409: "errors.arrivals.conflict_title",
     422: "errors.validation_title",
