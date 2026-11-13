@@ -29,7 +29,7 @@ _ERROR_CONTENT = {
 }
 
 
-@router.get("/live", summary="Check ETA process liveness")
+@router.get("/live", summary="Check ETA process liveness", openapi_extra={"security": []})
 async def liveness() -> LivenessResponse:
     """Report that the HTTP process is responding."""
     return LivenessResponse(status="alive")
@@ -38,6 +38,7 @@ async def liveness() -> LivenessResponse:
 @router.get(
     "/ready",
     summary="Check local ETA calculation readiness",
+    openapi_extra={"security": []},
     responses={
         503: {"description": "Invalid ETA service configuration.", "content": _ERROR_CONTENT},
     },

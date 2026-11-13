@@ -10,7 +10,7 @@ from app.config import ArrivalQualityPolicy, TripContextSettings
 
 service_bearer = HTTPBearer(
     auto_error=False,
-    scheme_name="EtaServiceBearer",
+    scheme_name="http",
     description="Sanctum Bearer token forwarded to the operational Dashboard.",
 )
 

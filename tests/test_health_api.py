@@ -70,8 +70,8 @@ class HealthApiTests(unittest.TestCase):
         live = spec["paths"]["/health/live"]["get"]
         ready = spec["paths"]["/health/ready"]["get"]
 
-        self.assertNotIn("security", live)
-        self.assertNotIn("security", ready)
+        self.assertEqual(live["security"], [])
+        self.assertEqual(ready["security"], [])
         self.assertEqual(set(ready["responses"]["200"]["content"]), {"application/json"})
         for code in ("503",):
             with self.subTest(code=code):

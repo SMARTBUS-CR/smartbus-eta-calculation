@@ -18,6 +18,7 @@ router = APIRouter()
     response_model=EtaResponse,
     status_code=status.HTTP_200_OK,
     summary="Calculate Bus Estimated Time of Arrival (ETA)",
+    openapi_extra={"security": []},
 )
 def calculate_eta(payload: EtaRequest) -> EtaResponse:
     """Calculate ETA and return the result in the API response contract."""

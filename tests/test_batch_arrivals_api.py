@@ -303,10 +303,8 @@ class BatchArrivalsApiTests(unittest.TestCase):
     def test_documents_the_contract_media_types_examples_and_bearer_security(self):
         spec = self.client.get("/openapi.json").json()
         operation = spec["paths"]["/api/v1/eta/trips/{trip_id}/arrivals"]["post"]
-        self.assertEqual(operation["security"], [{"EtaServiceBearer": []}])
-        self.assertEqual(
-            spec["components"]["securitySchemes"]["EtaServiceBearer"]["scheme"], "bearer"
-        )
+        self.assertEqual(operation["security"], [{"http": []}])
+        self.assertEqual(spec["components"]["securitySchemes"]["http"]["scheme"], "bearer")
         request = operation["requestBody"]["content"]["application/json"]
         self.assertIn("moving_bus", request["examples"])
         self.assertIn("BatchArrivalsRequest", request["schema"]["$ref"])
@@ -322,7 +320,7 @@ class BatchArrivalsApiTests(unittest.TestCase):
         self.assertIn("confirmed_arrival", arrival["quality_reason"]["enum"])
         self.assertIn("recent_effective_speed", arrival["quality_reason"]["enum"])
         legacy = spec["paths"]["/api/v1/eta/calculate"]["post"]
-        self.assertNotIn("security", legacy)
+        self.assertEqual(legacy["security"], [])
         self.assertIn("application/json", legacy["responses"]["200"]["content"])
 
     def test_openapi_examples_preserve_required_nullable_fields(self):
