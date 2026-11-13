@@ -3,7 +3,7 @@ from typing import Any
 
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pydantic_i18n import DictLoader, PydanticI18n
 
 from app.api.arrivals_errors import ArrivalsApiError, JsonApiResponse, validation_response
@@ -40,6 +40,88 @@ def openapi_with_arrivals_examples() -> dict[str, Any]:
 
 
 app.openapi = openapi_with_arrivals_examples
+
+
+@app.get("/", include_in_schema=False)
+async def root_docs_redirect() -> RedirectResponse:
+    """Redirect the root URL directly to the interactive Scalar API documentation."""
+    return RedirectResponse(url="/docs/api", status_code=status.HTTP_307_TEMPORARY_REDIRECT)
+
+
+@app.get("/docs/api.json", include_in_schema=False)
+async def openapi_json_spec() -> JSONResponse:
+    """Serve the OpenAPI specification as a JSON document."""
+    return JSONResponse(content=app.openapi())
+
+
+@app.get("/docs/api", include_in_schema=False, response_class=HTMLResponse)
+async def scalar_docs() -> HTMLResponse:
+    """Render modern Scalar API documentation referencing the OpenAPI document."""
+    html_content = """<!doctype html>
+<html>
+  <head>
+    <title>Smartbus ETA Calculation API - Documentation</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+      }
+      .scalar-top-nav {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 12px;
+        padding: 8px 20px;
+        background-color: #120e1f;
+        font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        font-size: 13px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      }
+      .scalar-top-nav a {
+        color: #c4b5fd;
+        text-decoration: none;
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-weight: 500;
+        transition: background-color 0.15s ease, color 0.15s ease;
+      }
+      .scalar-top-nav a:hover {
+        background-color: rgba(196, 181, 253, 0.15);
+        color: #ffffff;
+      }
+      .scalar-top-nav .nav-label {
+        margin-right: auto;
+        color: #9ca3af;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+      }
+      .scalar-top-nav .nav-separator {
+        color: #4b5563;
+        user-select: none;
+      }
+    </style>
+  </head>
+  <body>
+    <nav class="scalar-top-nav">
+      <span class="nav-label">SmartBus ETA Documentation</span>
+      <a href="/docs" target="_self" title="Interactive Swagger UI Explorer">Swagger UI</a>
+      <span class="nav-separator">|</span>
+      <a href="/redoc" target="_self" title="ReDoc API Reference">ReDoc</a>
+      <span class="nav-separator">|</span>
+      <a href="/docs/api.json" target="_blank" title="Raw OpenAPI Specification">OpenAPI JSON</a>
+    </nav>
+    <script
+      id="api-reference"
+      data-url="/docs/api.json"
+      data-configuration='{"theme":"purple","darkMode":true}'>
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
+  </body>
+</html>
+"""
+    return HTMLResponse(content=html_content)
 
 
 @app.exception_handler(ArrivalsApiError)
