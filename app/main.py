@@ -19,7 +19,19 @@ pydantic_translations = {"en_US": _translations.get("en", {}), "es_ES": _transla
 translation_loader = DictLoader(pydantic_translations)
 validation_translator = PydanticI18n(translation_loader)
 
-app = FastAPI(title="Smartbus ETA Calculation API")
+API_DESCRIPTION = (
+    "API for SmartBus **ETA Calculation Service**. This service is responsible for "
+    "predicting estimated arrival times for bus routes and stops using machine learning inference "
+    "and deterministic fallback methods. <br><br> "
+    "All the endpoints described in this documentation follow the "
+    "[JSON:API](https://jsonapi.org/) specification for request and response formats."
+)
+
+app = FastAPI(
+    title="SmartBus ETA Calculation API",
+    version="2.0.0",
+    description=API_DESCRIPTION,
+)
 app.include_router(eta_router, prefix="/api/v1/eta", tags=["ETA"])
 app.include_router(arrivals_router, prefix="/api/v1/eta", tags=["ETA"])
 app.include_router(health_router)
@@ -29,6 +41,7 @@ _default_openapi = app.openapi
 
 def openapi_with_arrivals_examples() -> dict[str, Any]:
     schema = _default_openapi()
+    schema["security"] = [{"http": []}]
     operation = schema["paths"]["/api/v1/eta/trips/{trip_id}/arrivals"]["post"]
     request = operation["requestBody"]["content"]["application/json"]
     response = operation["responses"]["200"]["content"][JsonApiResponse.media_type]
@@ -60,7 +73,7 @@ async def scalar_docs() -> HTMLResponse:
     html_content = """<!doctype html>
 <html>
   <head>
-    <title>Smartbus ETA Calculation API - Documentation</title>
+    <title>SmartBus ETA Calculation API - Documentation</title>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <style>

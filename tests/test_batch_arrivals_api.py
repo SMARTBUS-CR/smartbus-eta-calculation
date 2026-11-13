@@ -278,9 +278,9 @@ class BatchArrivalsApiTests(unittest.TestCase):
     def test_documents_the_contract_media_types_examples_and_bearer_security(self):
         spec = self.client.get("/openapi.json").json()
         operation = spec["paths"]["/api/v1/eta/trips/{trip_id}/arrivals"]["post"]
-        self.assertEqual(operation["security"], [{"EtaServiceBearer": []}])
+        self.assertEqual(operation["security"], [{"http": []}])
         self.assertEqual(
-            spec["components"]["securitySchemes"]["EtaServiceBearer"]["scheme"], "bearer"
+            spec["components"]["securitySchemes"]["http"]["scheme"], "bearer"
         )
         request = operation["requestBody"]["content"]["application/json"]
         self.assertIn("moving_bus", request["examples"])

@@ -37,6 +37,10 @@ class DocsApiTests(unittest.TestCase):
 
         spec = response.json()
         self.assertIn("openapi", spec)
-        self.assertEqual(spec.get("info", {}).get("title"), "Smartbus ETA Calculation API")
+        self.assertEqual(spec.get("info", {}).get("title"), "SmartBus ETA Calculation API")
+        self.assertEqual(spec.get("info", {}).get("version"), "2.0.0")
+        self.assertIn("SmartBus **ETA Calculation Service**", spec.get("info", {}).get("description", ""))
+        self.assertEqual(spec.get("security"), [{"http": []}])
+        self.assertIn("http", spec.get("components", {}).get("securitySchemes", {}))
         self.assertIn("/api/v1/eta/calculate", spec.get("paths", {}))
         self.assertIn("/api/v1/eta/trips/{trip_id}/arrivals", spec.get("paths", {}))
