@@ -29,9 +29,7 @@ class TrackingIntegrationTests(unittest.TestCase):
         environment = patch.dict(
             os.environ,
             {
-                "ETA_SERVICE_KEY": "eta-service-key",
                 "TRIP_CONTEXT_BASE_URL": "https://dashboard.test",
-                "TRIP_CONTEXT_TOKEN": "dashboard-service-token",
             },
             clear=True,
         )
@@ -100,7 +98,7 @@ class TrackingIntegrationTests(unittest.TestCase):
                 f"https://dashboard.test/api/internal/v1/trips/{self.trip_id}"
                 "/tracking-context?projection=eta-v1",
             )
-            self.assertEqual(request.headers["authorization"], "Bearer dashboard-service-token")
+            self.assertEqual(request.headers["authorization"], "Bearer eta-service-key")
             self.assertEqual(request.extensions["timeout"]["read"], 3.0)
 
     def test_applies_quality_rules_after_parsing_the_dashboard_plan(self):

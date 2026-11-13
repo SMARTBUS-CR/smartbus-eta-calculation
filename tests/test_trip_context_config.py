@@ -13,7 +13,6 @@ class TripContextSettingsTests(unittest.TestCase):
     def test_loads_trip_context_settings_from_environment(self):
         environment = {
             "TRIP_CONTEXT_BASE_URL": "https://dashboard.test",
-            "TRIP_CONTEXT_TOKEN": "test-service-token",
             "TRIP_CONTEXT_TIMEOUT_SECONDS": "1.5",
         }
 
@@ -21,7 +20,7 @@ class TripContextSettingsTests(unittest.TestCase):
             settings = TripContextSettings.from_environment()
 
         self.assertEqual(settings.base_url, "https://dashboard.test")
-        self.assertEqual(settings.token, "test-service-token")
+        self.assertIsNone(settings.token)
         self.assertEqual(settings.timeout_seconds, 1.5)
 
     def test_rejects_missing_or_blank_base_url(self):
@@ -63,7 +62,7 @@ class TripContextSettingsTests(unittest.TestCase):
                     with self.assertRaises(ValueError):
                         TripContextSettings.from_environment()
 
-    def test_rejects_blank_service_tokens_from_environment(self):
+    def test_treats_blank_service_tokens_as_not_configured(self):
         for token in ("", "   ", "\t", "\n"):
             with self.subTest(token=repr(token)):
                 environment = {
@@ -72,12 +71,5 @@ class TripContextSettingsTests(unittest.TestCase):
                 }
 
                 with patch.dict(os.environ, environment, clear=True):
-                    with self.assertRaises(ValueError):
-                        TripContextSettings.from_environment()
-
-    def test_requires_a_service_token_from_environment(self):
-        environment = {"TRIP_CONTEXT_BASE_URL": "https://dashboard.test"}
-
-        with patch.dict(os.environ, environment, clear=True):
-            with self.assertRaisesRegex(ValueError, "TRIP_CONTEXT_TOKEN"):
-                TripContextSettings.from_environment()
+                    settings = TripContextSettings.from_environment()
+                self.assertIsNone(settings.token)
