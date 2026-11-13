@@ -15,11 +15,16 @@ service_bearer = HTTPBearer(
 )
 
 
+def _is_valid_bearer_token(token: str) -> bool:
+    """Return whether a token can be safely sent as an HTTP header value."""
+    return bool(token) and token.isascii() and all("!" <= character <= "~" for character in token)
+
+
 def extract_bearer_token(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Security(service_bearer)],
 ) -> str:
     """Extract the active user's non-empty Sanctum Bearer token."""
-    if credentials is None or not credentials.credentials.strip():
+    if credentials is None or not _is_valid_bearer_token(credentials.credentials):
         raise ArrivalsApiError(401, "unauthorized_service")
     return credentials.credentials
 

@@ -8,9 +8,11 @@ from datetime import datetime, timezone
 from unittest.mock import patch
 from uuid import UUID
 
+from fastapi.security import HTTPAuthorizationCredentials
 from fastapi.testclient import TestClient
 
-from app.api.arrivals_errors import ArrivalErrors
+from app.api.arrivals_dependencies import extract_bearer_token
+from app.api.arrivals_errors import ArrivalErrors, ArrivalsApiError
 from app.main import app
 from app.schemas.batch_arrivals_schema import BatchArrivalsRequest, BatchArrivalsResponse
 from app.schemas.trip_context_schema import TripContext
@@ -120,6 +122,26 @@ class BatchArrivalsApiTests(unittest.TestCase):
                 self.assert_json_api_error(response, 401, "unauthorized_service")
                 self.assertEqual(response.headers["www-authenticate"], "Bearer")
                 factory.assert_not_called()
+
+    def test_rejects_malformed_bearer_tokens_before_accessing_dashboard(self):
+        with self.dashboard() as (factory, _):
+            response = self.client.post(
+                URL,
+                json=make_arrivals_payload(),
+                headers={"Authorization": "Bearer invalid token"},
+            )
+
+        self.assert_json_api_error(response, 401, "unauthorized_service")
+        factory.assert_not_called()
+
+    def test_rejects_non_ascii_bearer_tokens_before_http_header_construction(self):
+        credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="token-é")
+
+        with self.assertRaises(ArrivalsApiError) as raised:
+            extract_bearer_token(credentials)
+
+        self.assertEqual(raised.exception.status, 401)
+        self.assertEqual(raised.exception.code, "unauthorized_service")
 
     def test_fails_closed_when_required_provider_configuration_is_missing(self):
         for setting in ("TRIP_CONTEXT_BASE_URL",):
@@ -288,7 +310,7 @@ class BatchArrivalsApiTests(unittest.TestCase):
         request = operation["requestBody"]["content"]["application/json"]
         self.assertIn("moving_bus", request["examples"])
         self.assertIn("BatchArrivalsRequest", request["schema"]["$ref"])
-        for code in ("200", "401", "404", "409", "422", "500", "502", "503"):
+        for code in ("200", "401", "403", "404", "409", "422", "500", "502", "503"):
             with self.subTest(code=code):
                 content = operation["responses"][code]["content"]
                 self.assertIn(JSON_API, content)
