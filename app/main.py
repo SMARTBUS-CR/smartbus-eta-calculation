@@ -42,6 +42,14 @@ _default_openapi = app.openapi
 def openapi_with_arrivals_examples() -> dict[str, Any]:
     schema = _default_openapi()
     schema["security"] = [{"http": []}]
+    paths = schema.get("paths", {})
+    for public_path, method in [
+        ("/health/live", "get"),
+        ("/api/v1/eta/calculate", "post"),
+    ]:
+        if public_path in paths and method in paths[public_path]:
+            paths[public_path][method]["security"] = []
+
     operation = schema["paths"]["/api/v1/eta/trips/{trip_id}/arrivals"]["post"]
     request = operation["requestBody"]["content"]["application/json"]
     response = operation["responses"]["200"]["content"][JsonApiResponse.media_type]

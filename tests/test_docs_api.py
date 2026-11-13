@@ -44,5 +44,7 @@ class DocsApiTests(unittest.TestCase):
         )
         self.assertEqual(spec.get("security"), [{"http": []}])
         self.assertIn("http", spec.get("components", {}).get("securitySchemes", {}))
+        self.assertEqual(spec["paths"]["/api/v1/eta/calculate"]["post"].get("security"), [])
+        self.assertEqual(spec["paths"]["/health/live"]["get"].get("security"), [])
         self.assertIn("/api/v1/eta/calculate", spec.get("paths", {}))
         self.assertIn("/api/v1/eta/trips/{trip_id}/arrivals", spec.get("paths", {}))

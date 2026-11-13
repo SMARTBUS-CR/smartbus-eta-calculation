@@ -29,7 +29,7 @@ _ERROR_CONTENT = {
 }
 
 
-@router.get("/live", summary="Check ETA process liveness")
+@router.get("/live", summary="Check ETA process liveness", openapi_extra={"security": []})
 async def liveness() -> LivenessResponse:
     """Report that the HTTP process is responding."""
     return LivenessResponse(status="alive")

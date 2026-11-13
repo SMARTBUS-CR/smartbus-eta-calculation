@@ -295,7 +295,7 @@ class BatchArrivalsApiTests(unittest.TestCase):
         self.assertIn("confirmed_arrival", arrival["quality_reason"]["enum"])
         self.assertIn("recent_effective_speed", arrival["quality_reason"]["enum"])
         legacy = spec["paths"]["/api/v1/eta/calculate"]["post"]
-        self.assertNotIn("security", legacy)
+        self.assertEqual(legacy["security"], [])
         self.assertIn("application/json", legacy["responses"]["200"]["content"])
 
     def test_openapi_examples_preserve_required_nullable_fields(self):
