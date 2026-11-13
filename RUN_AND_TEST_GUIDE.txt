@@ -1,0 +1,203 @@
+SMARTBUS ETA CALCULATION SERVICE
+RUN AND TEST GUIDE
+
+1. PREREQUISITES
+
+- Python 3.13.15 or a compatible Python version.
+- A terminal opened at the repository root.
+
+2. CREATE THE VIRTUAL ENVIRONMENT
+
+Windows PowerShell:
+
+  python -m venv .venv
+
+3. INSTALL DEPENDENCIES
+
+  .\.venv\Scripts\python.exe -m pip install -r requirements.txt
+
+4. RUN THE API
+
+Set these variables when OpenBLAS thread creation is limited by the local machine:
+
+  $env:OPENBLAS_NUM_THREADS = '1'
+  $env:OMP_NUM_THREADS = '1'
+
+Start the development server:
+
+  .\.venv\Scripts\python.exe -m uvicorn app.main:app --reload
+
+The API is available at:
+
+  http://127.0.0.1:8000
+
+The ETA endpoint is:
+
+  POST http://127.0.0.1:8000/api/v1/eta/calculate
+
+5. TEST A REAL ML PREDICTION
+
+Open another PowerShell terminal while the server is running:
+
+  $body = @{
+      remaining_distance_m = 1000.0
+      current_speed_kmh = 36.0
+      route_id = 'R-101'
+      stop_id = 'S-505'
+  } | ConvertTo-Json
+
+  Invoke-RestMethod -Method Post `
+      -Uri 'http://127.0.0.1:8000/api/v1/eta/calculate' `
+      -ContentType 'application/json' `
+      -Body $body
+
+Expected behavior:
+
+- HTTP 200.
+- The ML model predicts eta_seconds.
+- confidence is 0.82.
+- speed_m_s is 10.0.
+- The response preserves route_id and stop_id.
+
+6. TEST A REAL FALLBACK CALCULATION
+
+Use a valid speed below the ML training range. The ML component rejects the input and the deterministic fallback calculates the ETA:
+
+  $body = @{
+      remaining_distance_m = 1000.0
+      current_speed_kmh = 1.0
+      route_id = 'R-101'
+      stop_id = 'S-505'
+  } | ConvertTo-Json
+
+  Invoke-RestMethod -Method Post `
+      -Uri 'http://127.0.0.1:8000/api/v1/eta/calculate' `
+      -ContentType 'application/json' `
+      -Body $body
+
+Expected behavior:
+
+- HTTP 200.
+- eta_seconds is 3600.
+- eta_format is "60 min 0 s".
+- confidence is 0.50.
+
+7. TEST REQUEST VALIDATION
+
+Use a zero speed to receive HTTP 422:
+
+  $body = @{
+      remaining_distance_m = 100.0
+      current_speed_kmh = 0.0
+      route_id = 'R-101'
+      stop_id = 'S-505'
+  } | ConvertTo-Json
+
+  try {
+      Invoke-RestMethod -Method Post `
+          -Uri 'http://127.0.0.1:8000/api/v1/eta/calculate' `
+          -ContentType 'application/json' `
+          -Headers @{ 'Accept-Language' = 'en' } `
+          -Body $body
+  } catch {
+      $_.ErrorDetails.Message
+  }
+
+Expected behavior:
+
+- HTTP 422.
+- The returned error identifies current_speed_kmh.
+
+8. RUN ALL AUTOMATED TESTS
+
+  $env:OPENBLAS_NUM_THREADS = '1'
+  $env:OMP_NUM_THREADS = '1'
+  .\.venv\Scripts\python.exe -m pytest tests/ -v
+
+Discovery includes the API, schema, and service suites.
+
+9. RUN ONLY API TESTS
+
+  .\.venv\Scripts\python.exe -m pytest tests/test_eta_api.py tests/test_batch_arrivals_api.py -v
+
+10. RUN ONLY SERVICE TESTS
+
+  .\.venv\Scripts\python.exe -m pytest tests/services/ -v
+
+11. VERIFY DEPENDENCIES
+
+  .\.venv\Scripts\python.exe -m pip check
+
+
+12. CURRENT MODEL LIMITS
+
+- The ML model accepts distances from 0 to 20,000 meters.
+- The ML model accepts speeds from 5 to 100 km/h.
+- Values outside that range use the deterministic fallback when possible.
+- The single-stop endpoint rejects a speed less than or equal to zero.
+
+
+13. TEST THE INTERNAL BATCH ENDPOINT
+
+- Deploy Dashboard PR #111, or its equivalent release, before enabling this
+  integration. Dashboard must expose the eta-v1 tracking-context projection and
+  accept the active user's Sanctum Bearer token on that endpoint.
+- Set TRIP_CONTEXT_BASE_URL to the Dashboard service URL. Do not configure
+  ETA_SERVICE_KEY: the ETA service no longer uses static shared credentials.
+- Obtain a valid Sanctum token from the active Dashboard user session. Send it
+  as Authorization: Bearer <sanctum_token> to the ETA batch endpoint. ETA
+  forwards that exact token to Dashboard; it must have permission to read the
+  requested Trip context.
+- TRIP_CONTEXT_TOKEN is optional and is not used when an incoming Bearer token
+  is present. Leave it unset for the normal user-token integration.
+- Send POST /api/v1/eta/trips/{trip_id}/arrivals with Content-Type: application/json
+  and the Authorization header. Use the moving_bus example in /docs, substituting
+  the saved trip revision, occurrence IDs, route progress and a fresh UTC observed_at.
+  Use the moving_bus example in /docs, substituting the saved trip revision,
+  occurrence IDs, route progress and a fresh UTC observed_at.
+- A usable moving observation returns ordered JSON:API arrivals with separate
+  live and planned times. A fresh positive effective speed can be used when
+  current speed is zero or unknown (quality_reason=recent_effective_speed).
+- An explicit, usable stop confirmation returns method=arrived, eta_seconds=0
+  and quality_reason=confirmed_arrival for that occurrence. The arrival time
+  is capped at the server calculation time.
+- A degraded observation returns scheduled_reference or unavailable with null
+  live fields. The planned time remains available when supplied by Dashboard.
+
+Batch quality limits are inclusive and configurable in the environment:
+
+  ETA_MAX_OBSERVATION_AGE_SECONDS=30
+  ETA_MAX_FUTURE_SKEW_SECONDS=5
+  ETA_MAX_ACCURACY_METERS=100
+  ETA_MAX_EFFECTIVE_SPEED_AGE_SECONDS=30
+
+Values must be finite and nonnegative. Invalid configuration returns
+503 eta_not_ready. Observations past the allowed future skew return 422.
+
+
+14. VERIFY SERVICE HEALTH AND TRACKING INTEGRATION
+
+- GET /health/live is public and returns {"status":"alive"}.
+- GET /health/ready does not require a Bearer token. Valid local settings return
+  {"status":"ready","calculation":"available","ml":"disabled"}. Readiness
+  checks local configuration only; use an authenticated batch request to verify
+  the Dashboard connection.
+- Start both services after coordinating the Dashboard deployment described in
+  section 13. Use a saved Dashboard trip, a user Sanctum token and the moving_bus
+  request example in /docs. Verify the
+  returned occurrence order and the separate planned and live arrival fields.
+  A scheduled trip returns planned references or unavailable results.
+
+GPS owns the active trip and the latest accepted position version:
+
+1. Send the plan revision and position version from the accepted observation.
+2. After ETA responds, compare data.attributes.trip_id, route_revision and
+   position_version with the active values before applying the arrivals.
+3. If GPS has accepted position version 22 and the response echoes version 21,
+   discard it even if that response arrives last. observed_at is echoed in UTC
+   and can be used to trace the original observation.
+
+On 409 route_revision_mismatch, refresh the plan before submitting progress
+against the new revision. 502 trip_context_invalid_response and 503
+trip_context_unavailable are dependency failures with no partial arrivals.
+OpenAPI includes JSON:API examples and stable error codes for the consumer.
