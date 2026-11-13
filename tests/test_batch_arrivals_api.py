@@ -279,9 +279,7 @@ class BatchArrivalsApiTests(unittest.TestCase):
         spec = self.client.get("/openapi.json").json()
         operation = spec["paths"]["/api/v1/eta/trips/{trip_id}/arrivals"]["post"]
         self.assertEqual(operation["security"], [{"http": []}])
-        self.assertEqual(
-            spec["components"]["securitySchemes"]["http"]["scheme"], "bearer"
-        )
+        self.assertEqual(spec["components"]["securitySchemes"]["http"]["scheme"], "bearer")
         request = operation["requestBody"]["content"]["application/json"]
         self.assertIn("moving_bus", request["examples"])
         self.assertIn("BatchArrivalsRequest", request["schema"]["$ref"])
